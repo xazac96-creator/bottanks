@@ -1,0 +1,14 @@
+{
+  "name": "bottanks",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bot Tanks live two-agent duel arena",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js && node test_server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

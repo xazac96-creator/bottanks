@@ -1,0 +1,3561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bot Tanks</title>
+  <style>
+    :root {
+      --bg: #07060f;
+      --ink: #ece8f6;
+      --muted: #8d88a3;
+      --line: rgba(180, 160, 230, 0.18);
+      --cyan: #6be0ff;
+      --amber: #ffb45a;
+      --violet: #9d7dff;
+      --panel: rgba(14, 12, 28, 0.78);
+      --danger: #ff6b8a;
+      --ok: #7dffb0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(ellipse 70% 45% at 15% 10%, rgba(122, 40, 170, 0.35), transparent 55%),
+        radial-gradient(ellipse 55% 40% at 90% 0%, rgba(30, 70, 170, 0.38), transparent 50%),
+        radial-gradient(ellipse 50% 50% at 70% 100%, rgba(160, 30, 90, 0.22), transparent 55%),
+        #07060f;
+      color: var(--ink);
+      font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+    body { padding: 28px 20px 48px; }
+    .wrap { max-width: 1000px; margin: 0 auto; }
+    header.hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: 0.28em;
+      font-size: 22px;
+      text-transform: uppercase;
+    }
+    .sub {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+    }
+    .hud-meta {
+      text-align: right;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .hud-meta strong { color: var(--ink); font-weight: 600; }
+    .stage {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px var(--line),
+        0 20px 70px rgba(0, 0, 0, 0.45),
+        0 0 80px rgba(90, 40, 160, 0.18);
+      background: #05040c;
+    }
+    canvas#field {
+      display: block;
+      width: 100%;
+      height: auto;
+      vertical-align: top;
+      cursor: crosshair;
+    }
+    .toast {
+      position: absolute;
+      left: 50%;
+      top: 14px;
+      transform: translateX(-50%);
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(8, 6, 18, 0.7);
+      border: 1px solid var(--line);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      pointer-events: none;
+      color: #d8d2ee;
+    }
+    .dock {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+      backdrop-filter: blur(8px);
+    }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .panel.left h2 { color: var(--cyan); }
+    .panel.right h2 { color: var(--amber); }
+    label.row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    select, textarea, input[type="number"], input[type="range"] {
+      width: 100%;
+      accent-color: var(--violet);
+    }
+    select, input[type="number"], textarea {
+      background: rgba(255,255,255,0.04);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font: inherit;
+      font-size: 13px;
+    }
+    textarea {
+      min-height: 118px;
+      font-family: "IBM Plex Mono", "ui-monospace", "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      resize: vertical;
+    }
+    .human-ctrls { display: none; }
+    .human-ctrls.on { display: block; }
+    .custom-box { display: none; }
+    .custom-box.on { display: block; }
+    .slider-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .slider-line span.k { color: var(--muted); width: 52px; }
+    .slider-line span.v { width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+    .weapons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0 4px;
+    }
+    .weapons button {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: rgba(255,255,255,0.04);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 8px;
+      font: inherit;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+    .weapons button.active {
+      background: rgba(157, 125, 255, 0.22);
+      border-color: rgba(157, 125, 255, 0.7);
+    }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button.act {
+      background: #ece8f6;
+      color: #120e1c;
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    button.act.ghost {
+      background: transparent;
+      color: var(--ink);
+      box-shadow: inset 0 0 0 1px var(--line);
+    }
+    button.act:disabled { opacity: 0.4; cursor: default; }
+    button.fire {
+      background: var(--violet);
+      color: #140c22;
+    }
+    .span2 { grid-column: 1 / -1; }
+    .headless-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+    pre#seriesOut {
+      margin: 12px 0 0;
+      background: rgba(0,0,0,0.35);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      color: #d4d0e6;
+      min-height: 3em;
+    }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+    .checks { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .err { color: var(--danger); font-size: 12px; min-height: 1em; margin-top: 4px; }
+    @media (max-width: 760px) {
+      .dock, .headless-grid { grid-template-columns: 1fr; }
+      header.hero { flex-direction: column; align-items: flex-start; }
+      .hud-meta { text-align: left; }
+    }
+  
+    .mode-toggle {
+      display: inline-flex;
+      margin: 0 0 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      vertical-align: middle;
+    }
+    .mode-toggle button {
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      padding: 5px 12px;
+      font: inherit;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .mode-toggle button.on {
+      background: rgba(157, 125, 255, 0.28);
+      color: var(--ink);
+    }
+    header.hero .title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    body.live-mode .local-only { display: none !important; }
+    body.local-mode .live-only { display: none !important; }
+    .lobby-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; }
+    .lobby-row {
+      display: grid;
+      grid-template-columns: 1.2fr 0.7fr 1.4fr 0.6fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .lobby-row:hover { background: rgba(157, 125, 255, 0.12); }
+    .lobby-row.on { outline: 1px solid var(--violet); }
+    .pill {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .pill.waiting { background: rgba(255, 180, 90, 0.2); color: var(--amber); }
+    .pill.active { background: rgba(125, 255, 176, 0.18); color: var(--ok); }
+    .pill.finished { background: rgba(157, 125, 255, 0.2); color: var(--violet); }
+    .ledger {
+      max-height: 280px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ledger-row {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      line-height: 1.45;
+      background: rgba(0,0,0,0.25);
+    }
+    .ledger-row.left { border-left: 3px solid var(--cyan); }
+    .ledger-row.right { border-left: 3px solid var(--amber); }
+    .ledger-row .taunt {
+      margin-top: 4px;
+      font-style: italic;
+      color: #d8d0f0;
+    }
+    .ledger-row .meta { color: var(--muted); font-size: 11px; }
+    .replay-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+
+    input[type="text"] {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .join-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1.2fr auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+    @media (max-width: 760px) {
+      .join-grid { grid-template-columns: 1fr; }
+    }
+    #liveTelemetry {
+      margin: 0 0 12px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-family: "IBM Plex Mono", "ui-monospace", "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      color: #e6e0f6;
+      min-height: 8.5em;
+    }
+    .live-aim .slider-line input[type="number"] {
+      width: 72px;
+      flex: 0 0 72px;
+    }
+    .live-aim .slider-line input[type="range"] {
+      flex: 1;
+    }
+    .live-fire-row { align-items: end; }
+    .live-fire-row label.row { margin-bottom: 0; flex: 1; min-width: 140px; }
+
+</style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div>
+        <div class="title-row">
+          <h1>Bot Tanks</h1>
+          <div class="mode-toggle">
+            <button type="button" id="btnModeLocal" class="on">Local</button>
+            <button type="button" id="btnModeLive">Live Arena</button>
+          </div>
+        </div>
+        <p class="sub">Turn-based artillery. Two tanks, wind, gravity — and a live two-agent duel arena.</p>
+      </div>
+      <div class="hud-meta" id="matchMeta">No match yet</div>
+    </header>
+
+    <div class="stage">
+      <canvas id="field" width="960" height="540"></canvas>
+      <div class="toast" id="toast">New match to begin</div>
+    </div>
+
+    <div class="dock live-only">
+
+      <section class="panel span2" id="livePlayPanel">
+        <h2>Play Live in Browser</h2>
+        <p class="hint">For humans and browser-using ChatGPT agents. Enter a name, optionally a Match ID, then Join Live Match. Read the Match Telemetry box (do not guess numbers off the canvas). Angle is 0° due right, 90° straight up, 180° due left. Left shoots right (aim 5°–85°). Right shoots left (aim 95°–175°). Power is 10–100. Weapons: shell, blast, triple, roller.</p>
+        <div class="join-grid">
+          <label class="row">Agent/Player Name
+            <input type="text" id="livePlayerName" name="livePlayerName" maxlength="40" placeholder="Your name" autocomplete="nickname" />
+          </label>
+          <label class="row">Match ID (optional)
+            <input type="text" id="liveJoinMatchId" name="liveJoinMatchId" placeholder="Leave blank to auto-seat or open a lobby" autocomplete="off" />
+          </label>
+          <button type="button" class="act" id="btnJoinLive">Join Live Match</button>
+        </div>
+        <h2>Match Telemetry</h2>
+        <pre id="liveTelemetry">Not seated. Enter a name and click Join Live Match. Leave Match ID blank to join a waiting lobby or open a new one.</pre>
+        <div class="live-aim">
+          <div class="slider-line">
+            <span class="k">Angle</span>
+            <input type="number" id="liveAngleNum" name="liveAngleNum" min="0" max="180" step="0.1" value="50" aria-label="Angle degrees" />
+            <input type="range" id="liveAngle" name="liveAngle" min="0" max="180" step="0.1" value="50" aria-label="Angle slider" />
+            <span class="v" id="liveAngleV">50°</span>
+          </div>
+          <div class="slider-line">
+            <span class="k">Power</span>
+            <input type="number" id="livePowerNum" name="livePowerNum" min="10" max="100" step="0.1" value="70" aria-label="Power" />
+            <input type="range" id="livePower" name="livePower" min="10" max="100" step="0.1" value="70" aria-label="Power slider" />
+            <span class="v" id="livePowerV">70</span>
+          </div>
+        </div>
+        <div class="btn-row live-fire-row">
+          <label class="row">Weapon
+            <select id="liveWeapon" name="liveWeapon" aria-label="Weapon">
+              <option value="shell" selected>shell</option>
+              <option value="blast">blast</option>
+              <option value="triple">triple</option>
+              <option value="roller">roller</option>
+            </select>
+          </label>
+          <label class="row">Taunt (optional)
+            <input type="text" id="liveTaunt" name="liveTaunt" maxlength="140" placeholder="Optional taunt" />
+          </label>
+          <button type="button" class="act fire" id="btnLiveFire" disabled>Fire Shot</button>
+          <button type="button" class="act ghost" id="btnLeaveSeat">Leave Seat</button>
+        </div>
+        <p class="hint" id="livePlayHint">Fire Shot is enabled only when the match is active and it is your turn. Leave Seat clears this browser session so you can join a fresh match.</p>
+      </section>
+      <section class="panel span2">
+        <h2>Lobby</h2>
+        <p class="hint" id="liveStatus">Live arena at this server. Agents join with agent-cli.js or POST /api/join.</p>
+        <div class="btn-row">
+          <button class="act ghost" id="btnLobbyRefresh">Refresh</button>
+          <select id="addBotKind">
+            <option value="solver">Solver</option>
+            <option value="bracketer">Bracketer</option>
+            <option value="naive">Naive</option>
+            <option value="random">Random</option>
+          </select>
+          <button class="act" id="btnAddSolver">Fill empty seat with bot</button>
+          <label class="row" style="margin:0;max-width:140px">Seed
+            <input type="number" id="liveSeed" value="42" />
+          </label>
+          <button class="act ghost" id="btnCreateWatch">Open a waiting match</button>
+        </div>
+        <div class="lobby-list" id="lobbyList" style="margin-top:10px"></div>
+        <div class="replay-bar">
+          <button class="act ghost" id="btnReplayPlay">Play replay</button>
+          <button class="act ghost" id="btnReplayStep">Step turn</button>
+          <button class="act ghost" id="btnReplayReset">Reset replay</button>
+        </div>
+      </section>
+      <section class="panel span2">
+        <h2>Turn-by-turn ledger</h2>
+        <div class="ledger" id="ledger"></div>
+      </section>
+    </div>
+
+    <div class="dock local-only">
+      <section class="panel left">
+        <h2>Left tank</h2>
+        <label class="row">Controller
+          <select id="leftBot"></select>
+        </label>
+        <div class="custom-box" id="leftCustomBox">
+          <label class="row">Custom controller
+            <textarea id="leftCode" spellcheck="false"></textarea>
+          </label>
+          <div class="err" id="leftErr"></div>
+        </div>
+        <div class="human-ctrls" id="leftHuman">
+          <div class="slider-line"><span class="k">Angle</span><input type="range" id="leftAngle" min="0" max="180" value="50" /><span class="v" id="leftAngleV">50°</span></div>
+          <div class="slider-line"><span class="k">Power</span><input type="range" id="leftPower" min="0" max="100" value="70" /><span class="v" id="leftPowerV">70</span></div>
+        </div>
+      </section>
+
+      <section class="panel right">
+        <h2>Right tank</h2>
+        <label class="row">Controller
+          <select id="rightBot"></select>
+        </label>
+        <div class="custom-box" id="rightCustomBox">
+          <label class="row">Custom controller
+            <textarea id="rightCode" spellcheck="false"></textarea>
+          </label>
+          <div class="err" id="rightErr"></div>
+        </div>
+        <div class="human-ctrls" id="rightHuman">
+          <div class="slider-line"><span class="k">Angle</span><input type="range" id="rightAngle" min="0" max="180" value="130" /><span class="v" id="rightAngleV">130°</span></div>
+          <div class="slider-line"><span class="k">Power</span><input type="range" id="rightPower" min="0" max="100" value="70" /><span class="v" id="rightPowerV">70</span></div>
+        </div>
+      </section>
+
+      <section class="panel span2">
+        <h2>Weapons and match</h2>
+        <div class="weapons" id="weaponRow"></div>
+        <div class="btn-row">
+          <button class="act fire" id="btnFire" disabled>Fire</button>
+          <button class="act" id="btnNew">New match</button>
+          <button class="act ghost" id="btnPause">Pause</button>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="aimPreview" checked /> Aim preview (human)</label>
+          <label><input type="checkbox" id="autoPlay" checked /> Auto-play bot turns</label>
+        </div>
+        <p class="hint">Human aiming: A/D or arrows change angle, W/S change power, 1–4 pick a weapon, Space fires. Angle is 0° due right, 90° straight up, 180° due left. Power is 0–100.</p>
+      </section>
+
+      <section class="panel span2">
+        <h2>Headless series</h2>
+        <div class="headless-grid">
+          <label class="row">Matches
+            <input type="number" id="seriesN" value="25" min="1" max="500" />
+          </label>
+          <label class="row">Seed
+            <input type="number" id="seriesSeed" value="42" />
+          </label>
+          <button class="act" id="btnSeries">Run series</button>
+        </div>
+        <pre id="seriesOut">Pick two controllers, then run a seeded batch with no animation.</pre>
+      </section>
+    </div>
+  </div>
+
+  <script>
+/**
+ * Bot Tanks — shared simulation engine (Node + browser).
+ * Turn-based artillery. Deterministic given a seed and bot decisions.
+ */
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) {
+    module.exports = factory();
+  } else {
+    root.BotTanks = factory();
+  }
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  "use strict";
+
+  const WIDTH = 960;
+  const HEIGHT = 540;
+  const GRAVITY = 420; // px/s^2, downward
+  const WIND_MAX = 90; // px/s^2 horizontal accel
+  const MAX_POWER = 100;
+  const SPEED_AT_MAX = 820; // px/s at power 100
+  const TANK_RADIUS = 13;
+  const PROJ_RADIUS = 3.5;
+  const TANK_HP = 100;
+  const MAX_TURNS = 80; // 40 shots each
+  const DT = 1 / 60;
+  const BOT_TIME_LIMIT_MS = 25;
+  const MUZZLE = TANK_RADIUS + 5;
+  const MAX_FLIGHT_S = 12;
+  const ROLL_SPEED = 220; // px/s along surface
+  const MAX_ROLL = 280; // px
+  const ROLL_TRIGGER = TANK_RADIUS + 16;
+
+  const WEAPONS = {
+    shell: {
+      id: "shell",
+      name: "Standard Shell",
+      blast: 32,
+      damage: 30,
+      crater: 38,
+    },
+    blast: {
+      id: "blast",
+      name: "Big Blast",
+      blast: 56,
+      damage: 44,
+      crater: 68,
+    },
+    triple: {
+      id: "triple",
+      name: "Triple Shot",
+      blast: 24,
+      damage: 18,
+      crater: 28,
+      spread: 7,
+    },
+    roller: {
+      id: "roller",
+      name: "Roller / Digger",
+      blast: 28,
+      damage: 34,
+      crater: 32,
+      roll: true,
+    },
+  };
+
+  const WEAPON_LIST = Object.freeze(
+    ["shell", "blast", "triple", "roller"].map(function (id) {
+      const w = WEAPONS[id];
+      return Object.freeze({
+        id: w.id,
+        name: w.name,
+        blast: w.blast,
+        damage: w.damage,
+      });
+    })
+  );
+
+  const CONSTANTS = Object.freeze({
+    WIDTH: WIDTH,
+    HEIGHT: HEIGHT,
+    GRAVITY: GRAVITY,
+    WIND_MAX: WIND_MAX,
+    MAX_POWER: MAX_POWER,
+    SPEED_AT_MAX: SPEED_AT_MAX,
+    TANK_RADIUS: TANK_RADIUS,
+    TANK_HP: TANK_HP,
+    MAX_TURNS: MAX_TURNS,
+    DT: DT,
+    BOT_TIME_LIMIT_MS: BOT_TIME_LIMIT_MS,
+  });
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function nowMs() {
+    return typeof performance !== "undefined" && performance.now
+      ? performance.now()
+      : Date.now();
+  }
+
+  function terrainAt(terrain, x) {
+    const n = terrain.length;
+    if (x <= 0) return terrain[0];
+    if (x >= n - 1) return terrain[n - 1];
+    const i = Math.floor(x);
+    const t = x - i;
+    return terrain[i] * (1 - t) + terrain[i + 1] * t;
+  }
+
+  function generateTerrain(width, height, rng) {
+    const h = new Array(width);
+    h[0] = height * 0.58 + (rng() - 0.5) * 40;
+    const step = 3.8 + rng() * 2.2;
+    for (let i = 1; i < width; i++) {
+      h[i] = h[i - 1] + (rng() - 0.5) * step;
+    }
+    // Smooth
+    for (let pass = 0; pass < 6; pass++) {
+      const c = h.slice();
+      for (let i = 1; i < width - 1; i++) {
+        h[i] = c[i] * 0.5 + c[i - 1] * 0.25 + c[i + 1] * 0.25;
+      }
+    }
+    // Central valley, slight side hills
+    const valleyAmp = height * (0.07 + rng() * 0.02);
+    for (let i = 0; i < width; i++) {
+      const u = i / (width - 1);
+      h[i] += Math.sin(u * Math.PI) * valleyAmp;
+    }
+    // One extra bump somewhere in the middle third (rng already used above
+    // in the loop is slightly non-uniform across seeds — bump uses one draw)
+    const bumpX = (0.3 + rng() * 0.4) * width;
+    const bumpW = 50 + rng() * 90;
+    const bumpA = (rng() - 0.45) * height * 0.16;
+    for (let i = 0; i < width; i++) {
+      const d = (i - bumpX) / bumpW;
+      h[i] -= Math.exp(-d * d) * bumpA;
+    }
+    const minH = height * 0.3;
+    const maxH = height * 0.82;
+    for (let i = 0; i < width; i++) {
+      h[i] = clamp(h[i], minH, maxH);
+    }
+    return h;
+  }
+
+  function flattenPlatform(terrain, x, radius) {
+    const i0 = Math.max(0, Math.floor(x - radius));
+    const i1 = Math.min(terrain.length - 1, Math.ceil(x + radius));
+    let sum = 0;
+    let n = 0;
+    for (let i = i0; i <= i1; i++) {
+      sum += terrain[i];
+      n++;
+    }
+    const y = sum / n;
+    for (let i = i0; i <= i1; i++) terrain[i] = y;
+    return y;
+  }
+
+  function carveCrater(terrain, ix, iy, radius) {
+    if (!(radius > 0) || !isFinite(ix) || !isFinite(iy)) return;
+    const i0 = Math.max(0, Math.floor(ix - radius));
+    const i1 = Math.min(terrain.length - 1, Math.ceil(ix + radius));
+    const heightCap = HEIGHT - 2;
+    for (let i = i0; i <= i1; i++) {
+      const dx = i - ix;
+      const inside = radius * radius - dx * dx;
+      if (inside < 0) continue;
+      const bottom = iy + Math.sqrt(inside);
+      if (bottom > terrain[i]) terrain[i] = Math.min(heightCap, bottom);
+    }
+  }
+
+  function carveTrench(terrain, x, depth, halfWidth) {
+    const i0 = Math.max(0, Math.floor(x - halfWidth));
+    const i1 = Math.min(terrain.length - 1, Math.ceil(x + halfWidth));
+    for (let i = i0; i <= i1; i++) {
+      terrain[i] = Math.min(HEIGHT - 2, terrain[i] + depth);
+    }
+  }
+
+  function settleTank(tank, terrain) {
+    const surface = terrainAt(terrain, tank.x);
+    tank.y = surface - TANK_RADIUS;
+    if (tank.y > HEIGHT - TANK_RADIUS - 1) {
+      tank.hp = 0;
+    }
+  }
+
+  function damageAt(dist, blast, maxDmg) {
+    const d = Math.max(0, dist - TANK_RADIUS);
+    if (d >= blast) return 0;
+    return maxDmg * (1 - d / blast);
+  }
+
+  function sanitizeCmd(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const angle = Number(raw.angle);
+    const power = Number(raw.power);
+    if (!isFinite(angle) || !isFinite(power)) return null;
+    let weapon = raw.weapon == null ? "shell" : String(raw.weapon);
+    if (!WEAPONS[weapon]) weapon = "shell";
+    return {
+      angle: clamp(angle, 0, 180),
+      power: clamp(power, 0, MAX_POWER),
+      weapon: weapon,
+    };
+  }
+
+  function launchVelocity(angleDeg, power) {
+    const rad = (angleDeg * Math.PI) / 180;
+    const speed = (clamp(power, 0, MAX_POWER) / MAX_POWER) * SPEED_AT_MAX;
+    return {
+      vx: Math.cos(rad) * speed,
+      vy: -Math.sin(rad) * speed,
+    };
+  }
+
+  function muzzlePos(tank, angleDeg) {
+    const rad = (angleDeg * Math.PI) / 180;
+    return {
+      x: tank.x + Math.cos(rad) * MUZZLE,
+      y: tank.y - Math.sin(rad) * MUZZLE,
+    };
+  }
+
+  /**
+   * Integrate one projectile. Reads terrain; does not mutate world.
+   * Returns impact info and a sampled path (for animation / preview).
+   */
+  function integrateProjectile(world, proj, opts) {
+    opts = opts || {};
+    const wantPath = !!opts.path;
+    const terrain = world.terrain;
+    const width = world.width;
+    const gravity = world.gravity;
+    const wind = world.wind;
+    const weapon = proj.weapon;
+    const tanks = [
+      { side: "left", x: world.left.x, y: world.left.y },
+      { side: "right", x: world.right.x, y: world.right.y },
+    ];
+
+    let x = proj.x;
+    let y = proj.y;
+    let vx = proj.vx;
+    let vy = proj.vy;
+    let rolling = false;
+    let rolled = 0;
+    let rollDir = vx >= 0 ? 1 : -1;
+    let immune = 10;
+    const path = wantPath ? [{ x: x, y: y, rolling: false }] : null;
+    const maxSteps = Math.ceil(MAX_FLIGHT_S / DT);
+    const rollPts = [];
+
+    for (let i = 0; i < maxSteps; i++) {
+      if (!rolling) {
+        x += vx * DT;
+        y += vy * DT;
+        vx += wind * DT;
+        vy += gravity * DT;
+      } else {
+        x += rollDir * ROLL_SPEED * DT;
+        const surface = terrainAt(terrain, x);
+        y = surface - 2;
+        rolled += ROLL_SPEED * DT;
+        rollPts.push(x);
+      }
+
+      if (wantPath) path.push({ x: x, y: y, rolling: rolling });
+
+      if (x < 0 || x >= width || y > HEIGHT + 60) {
+        return {
+          x: x,
+          y: y,
+          oob: true,
+          impact: false,
+          hitTank: null,
+          path: path,
+          rolled: rolling,
+          rollXs: rollPts,
+          steps: i,
+        };
+      }
+
+      if (immune <= 0) {
+        for (let t = 0; t < 2; t++) {
+          const dx = x - tanks[t].x;
+          const dy = y - tanks[t].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const trigger = rolling ? ROLL_TRIGGER : TANK_RADIUS + PROJ_RADIUS;
+          if (dist < trigger) {
+            return {
+              x: x,
+              y: y,
+              oob: false,
+              impact: true,
+              hitTank: tanks[t].side,
+              path: path,
+              rolled: rolling,
+              rollXs: rollPts,
+              steps: i,
+            };
+          }
+        }
+      } else {
+        immune--;
+      }
+
+      if (!rolling && y >= terrainAt(terrain, x)) {
+        y = terrainAt(terrain, x);
+        if (weapon.roll) {
+          rolling = true;
+          rollDir = Math.abs(vx) < 8 ? (world.currentSide === "left" ? 1 : -1) : vx >= 0 ? 1 : -1;
+          // Prefer rolling toward the opponent if almost vertical impact
+          if (Math.abs(vx) < 8 && world.left && world.right) {
+            /* rollDir already set from currentSide if provided */
+          }
+        } else {
+          return {
+            x: x,
+            y: y,
+            oob: false,
+            impact: true,
+            hitTank: null,
+            path: path,
+            rolled: false,
+            rollXs: rollPts,
+            steps: i,
+          };
+        }
+      }
+
+      if (rolling && rolled >= MAX_ROLL) {
+        return {
+          x: x,
+          y: y,
+          oob: false,
+          impact: true,
+          hitTank: null,
+          path: path,
+          rolled: true,
+          rollXs: rollPts,
+          steps: i,
+        };
+      }
+    }
+
+    return {
+      x: x,
+      y: y,
+      oob: true,
+      impact: false,
+      hitTank: null,
+      path: path,
+      rolled: rolling,
+      rollXs: rollPts,
+      steps: maxSteps,
+    };
+  }
+
+  function projectilesFor(world, side, cmd, path) {
+    const tank = world[side];
+    const weapon = WEAPONS[cmd.weapon] || WEAPONS.shell;
+    const angles =
+      weapon.id === "triple"
+        ? [cmd.angle - weapon.spread, cmd.angle, cmd.angle + weapon.spread]
+        : [cmd.angle];
+    const out = [];
+    for (let i = 0; i < angles.length; i++) {
+      const a = clamp(angles[i], 0, 180);
+      const muz = muzzlePos(tank, a);
+      const v = launchVelocity(a, cmd.power);
+      const proj = {
+        x: muz.x,
+        y: muz.y,
+        vx: v.vx,
+        vy: v.vy,
+        weapon: weapon,
+      };
+      const res = integrateProjectile(
+        Object.assign({}, world, { currentSide: side }),
+        proj,
+        { path: path }
+      );
+      res.weapon = weapon;
+      res.angle = a;
+      out.push(res);
+    }
+    return out;
+  }
+
+  function applyImpacts(world, events) {
+    let dmgLeft = 0;
+    let dmgRight = 0;
+    const craters = [];
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      ev.damageLeft = 0;
+      ev.damageRight = 0;
+      if (ev.oob && !ev.impact) continue;
+      const weapon = ev.weapon;
+      if (ev.rollXs && ev.rollXs.length) {
+        for (let k = 0; k < ev.rollXs.length; k += 2) {
+          carveTrench(world.terrain, ev.rollXs[k], 3.2, 4);
+          craters.push({
+            x: ev.rollXs[k],
+            y: ev.y,
+            radius: 4,
+            depth: 3.2,
+            kind: "trench",
+          });
+        }
+      }
+      if (ev.impact || ev.hitTank) {
+        carveCrater(world.terrain, ev.x, ev.y, weapon.crater);
+        craters.push({
+          x: ev.x,
+          y: ev.y,
+          radius: weapon.crater,
+          kind: "crater",
+        });
+        const dl = damageAt(
+          Math.hypot(ev.x - world.left.x, ev.y - world.left.y),
+          weapon.blast,
+          weapon.damage
+        );
+        const dr = damageAt(
+          Math.hypot(ev.x - world.right.x, ev.y - world.right.y),
+          weapon.blast,
+          weapon.damage
+        );
+        ev.damageLeft = dl;
+        ev.damageRight = dr;
+        dmgLeft += dl;
+        dmgRight += dr;
+      }
+    }
+    world.left.hp = Math.max(0, world.left.hp - dmgLeft);
+    world.right.hp = Math.max(0, world.right.hp - dmgRight);
+    settleTank(world.left, world.terrain);
+    settleTank(world.right, world.terrain);
+    return { left: dmgLeft, right: dmgRight, craters: craters };
+  }
+
+  function pickWind(rng) {
+    // Often moderate, occasionally strong, sometimes near-still
+    const u = rng() * 2 - 1;
+    const mag = Math.pow(Math.abs(u), 0.75) * WIND_MAX;
+    return (u < 0 ? -1 : 1) * mag;
+  }
+
+  function freezeShot(s) {
+    return Object.freeze({
+      turn: s.turn,
+      side: s.side,
+      angle: s.angle,
+      power: s.power,
+      weapon: s.weapon,
+      impactX: s.impactX,
+      impactY: s.impactY,
+      damageToOpponent: s.damageToOpponent,
+      damageToSelf: s.damageToSelf,
+      hit: s.hit,
+      skipped: !!s.skipped,
+      error: s.error || null,
+      timeout: !!s.timeout,
+    });
+  }
+
+  function snapshotFor(world, side) {
+    const own = side === "left" ? world.left : world.right;
+    const opp = side === "left" ? world.right : world.left;
+    const ownHist = [];
+    const all = [];
+    for (let i = 0; i < world.history.length; i++) {
+      const f = freezeShot(world.history[i]);
+      all.push(f);
+      if (world.history[i].side === side) ownHist.push(f);
+    }
+    const snap = {
+      terrain: Object.freeze(world.terrain.slice()),
+      field: Object.freeze({ width: world.width, height: world.height }),
+      own: Object.freeze({
+        x: own.x,
+        y: own.y,
+        hp: own.hp,
+        maxHp: own.maxHp,
+        side: side,
+      }),
+      opponent: Object.freeze({
+        x: opp.x,
+        y: opp.y,
+        hp: opp.hp,
+        maxHp: opp.maxHp,
+      }),
+      wind: world.wind,
+      gravity: world.gravity,
+      weapons: WEAPON_LIST,
+      shotHistory: Object.freeze(ownHist),
+      allShots: Object.freeze(all),
+      turn: world.turn,
+      time: world.time,
+    };
+    return Object.freeze(snap);
+  }
+
+  function compileCustom(code) {
+    const src = String(code || "").trim();
+    if (!src) {
+      throw new Error("Custom bot is empty");
+    }
+    let fn;
+    try {
+      if (/^\s*(function|\(|async\s+function)/.test(src)) {
+        fn = new Function(
+          "state",
+          '"use strict"; const __fn = (' + src + "); return __fn(state);"
+        );
+      } else {
+        fn = new Function("state", '"use strict";\n' + src);
+      }
+    } catch (err) {
+      const wrapped = function () {
+        throw new Error("Custom bot failed to compile: " + err.message);
+      };
+      wrapped.__compileError = err.message;
+      return wrapped;
+    }
+    return fn;
+  }
+
+  function runBot(fn, snap, limitMs) {
+    const limit = limitMs == null ? BOT_TIME_LIMIT_MS : limitMs;
+    const t0 = nowMs();
+    try {
+      const result = fn(snap);
+      const elapsed = nowMs() - t0;
+      if (elapsed > limit) {
+        return { ok: false, timeout: true, error: null, cmd: null, elapsed: elapsed };
+      }
+      const cmd = sanitizeCmd(result);
+      if (!cmd) {
+        return {
+          ok: false,
+          timeout: false,
+          error: "invalid return",
+          cmd: null,
+          elapsed: elapsed,
+        };
+      }
+      return { ok: true, timeout: false, error: null, cmd: cmd, elapsed: elapsed };
+    } catch (err) {
+      return {
+        ok: false,
+        timeout: false,
+        error: err && err.message ? err.message : String(err),
+        cmd: null,
+        elapsed: nowMs() - t0,
+      };
+    }
+  }
+
+  function createWorld(opts) {
+    opts = opts || {};
+    const seed = opts.seed == null ? 1 : opts.seed >>> 0;
+    const rng = mulberry32(seed === 0 ? 1 : seed);
+    const width = opts.width || WIDTH;
+    const height = opts.height || HEIGHT;
+    const terrain = generateTerrain(width, height, rng);
+    const leftX = clamp(Math.round(width * 0.11 + (rng() - 0.5) * 24), 40, 140);
+    const rightX = clamp(
+      Math.round(width * 0.89 + (rng() - 0.5) * 24),
+      width - 140,
+      width - 40
+    );
+    const leftY = flattenPlatform(terrain, leftX, 16);
+    const rightY = flattenPlatform(terrain, rightX, 16);
+    const world = {
+      seed: seed,
+      rng: rng,
+      width: width,
+      height: height,
+      terrain: terrain,
+      gravity: GRAVITY,
+      wind: pickWind(rng),
+      left: {
+        x: leftX,
+        y: leftY - TANK_RADIUS,
+        hp: TANK_HP,
+        maxHp: TANK_HP,
+        side: "left",
+      },
+      right: {
+        x: rightX,
+        y: rightY - TANK_RADIUS,
+        hp: TANK_HP,
+        maxHp: TANK_HP,
+        side: "right",
+      },
+      turn: 1,
+      side: "left",
+      time: 0,
+      history: [],
+      winner: null, // 'left' | 'right' | 'draw'
+      over: false,
+      stats: {
+        shots: { left: 0, right: 0 },
+        hits: { left: 0, right: 0 },
+        errors: { left: 0, right: 0 },
+        timeouts: { left: 0, right: 0 },
+        firstHitShots: null,
+        totalShotsWhenFirstHit: null,
+      },
+    };
+    settleTank(world.left, terrain);
+    settleTank(world.right, terrain);
+    return world;
+  }
+
+  function finishIfNeeded(world) {
+    if (world.over) return;
+    const lDead = world.left.hp <= 0;
+    const rDead = world.right.hp <= 0;
+    if (lDead && rDead) {
+      world.over = true;
+      world.winner = "draw";
+    } else if (lDead) {
+      world.over = true;
+      world.winner = "right";
+    } else if (rDead) {
+      world.over = true;
+      world.winner = "left";
+    } else if (world.turn > MAX_TURNS) {
+      world.over = true;
+      if (world.left.hp > world.right.hp) world.winner = "left";
+      else if (world.right.hp > world.left.hp) world.winner = "right";
+      else world.winner = "draw";
+    }
+  }
+
+  function packTrajectory(ev) {
+    return {
+      angle: ev.angle,
+      weapon: ev.weapon && ev.weapon.id ? ev.weapon.id : ev.weapon,
+      path: ev.path ? ev.path.map(function (p) {
+        return { x: p.x, y: p.y, rolling: !!p.rolling };
+      }) : [],
+      rolled: !!ev.rolled,
+      rollXs: ev.rollXs ? ev.rollXs.slice() : [],
+      impactX: ev.x,
+      impactY: ev.y,
+      oob: !!ev.oob,
+      impact: !!ev.impact,
+      hitTank: ev.hitTank || null,
+      steps: ev.steps,
+      damageLeft: ev.damageLeft || 0,
+      damageRight: ev.damageRight || 0,
+    };
+  }
+
+  function compactTerrain(terrain, points) {
+    points = points || 32;
+    const out = new Array(points);
+    const n = terrain.length;
+    for (let i = 0; i < points; i++) {
+      const x = points === 1 ? 0 : (i / (points - 1)) * (n - 1);
+      out[i] = Math.round(terrainAt(terrain, x) * 100) / 100;
+    }
+    return out;
+  }
+
+  function resolveShot(world, cmd, meta) {
+    meta = meta || {};
+    const side = world.side;
+    const opp = side === "left" ? "right" : "left";
+    const windBefore = world.wind;
+    const hpBefore = { left: world.left.hp, right: world.right.hp };
+    const posBefore = {
+      left: { x: world.left.x, y: world.left.y },
+      right: { x: world.right.x, y: world.right.y },
+    };
+    const record = {
+      turn: world.turn,
+      turnNumber: world.turn,
+      side: side,
+      angle: cmd ? cmd.angle : 0,
+      power: cmd ? cmd.power : 0,
+      weapon: cmd ? cmd.weapon : "shell",
+      impactX: null,
+      impactY: null,
+      damageToOpponent: 0,
+      damageToSelf: 0,
+      damageToLeft: 0,
+      damageToRight: 0,
+      hpBefore: { left: hpBefore.left, right: hpBefore.right },
+      hpAfter: { left: hpBefore.left, right: hpBefore.right },
+      posBefore: posBefore,
+      posAfter: null,
+      windBefore: windBefore,
+      windAfter: windBefore,
+      trajectories: [],
+      impacts: [],
+      craters: [],
+      hit: false,
+      skipped: !cmd,
+      error: meta.error || null,
+      timeout: !!meta.timeout,
+      events: null,
+      winnerAfter: null,
+    };
+
+    if (meta.timeout) world.stats.timeouts[side]++;
+    else if (meta.error) world.stats.errors[side]++;
+
+    if (!cmd) {
+      record.posAfter = {
+        left: { x: world.left.x, y: world.left.y },
+        right: { x: world.right.x, y: world.right.y },
+      };
+      world.history.push(record);
+      advanceTurn(world);
+      record.windAfter = world.wind;
+      record.winnerAfter = world.winner;
+      return record;
+    }
+
+    world.stats.shots[side]++;
+    const events = projectilesFor(world, side, cmd, meta.path !== false);
+    const dmg = applyImpacts(world, events);
+    record.events = events;
+    record.craters = dmg.craters || [];
+    record.trajectories = events.map(packTrajectory);
+    record.impacts = record.trajectories.map(function (tr) {
+      return {
+        x: tr.impactX,
+        y: tr.impactY,
+        oob: tr.oob,
+        impact: tr.impact,
+        hitTank: tr.hitTank,
+        damageLeft: tr.damageLeft,
+        damageRight: tr.damageRight,
+        weapon: tr.weapon,
+      };
+    });
+    // Representative impact: last projectile, or first that hit a tank
+    let pick = events[events.length - 1];
+    for (let i = 0; i < events.length; i++) {
+      if (events[i].hitTank || (events[i].impact && !events[i].oob)) {
+        pick = events[i];
+        if (events[i].hitTank) break;
+      }
+    }
+    if (pick) {
+      record.impactX = pick.x;
+      record.impactY = pick.y;
+    }
+    record.damageToLeft = dmg.left;
+    record.damageToRight = dmg.right;
+    record.damageToSelf = dmg[side];
+    record.damageToOpponent = dmg[opp];
+    record.hpAfter = { left: world.left.hp, right: world.right.hp };
+    record.posAfter = {
+      left: { x: world.left.x, y: world.left.y },
+      right: { x: world.right.x, y: world.right.y },
+    };
+    record.hit = dmg[opp] > 0;
+    if (record.hit) {
+      world.stats.hits[side]++;
+      if (world.stats.firstHitShots == null) {
+        world.stats.firstHitShots =
+          world.stats.shots.left + world.stats.shots.right;
+      }
+    }
+    world.history.push(record);
+    finishIfNeeded(world);
+    if (!world.over) advanceTurn(world);
+    record.windAfter = world.wind;
+    record.winnerAfter = world.winner;
+    return record;
+  }
+
+  function advanceTurn(world) {
+    world.side = world.side === "left" ? "right" : "left";
+    world.turn += 1;
+    world.wind = pickWind(world.rng);
+    world.time += 1;
+    finishIfNeeded(world);
+  }
+
+  // --- Built-in bots --------------------------------------------------------
+
+  function createRandom(rng) {
+    rng = rng || Math.random;
+    return function (state) {
+      const towardRight = state.opponent.x >= state.own.x;
+      const angle = towardRight ? rng() * 90 : 90 + rng() * 90;
+      const power = 25 + rng() * 75;
+      const ids = ["shell", "blast", "triple", "roller"];
+      const weapon = ids[Math.floor(rng() * ids.length)];
+      return { angle: angle, power: power, weapon: weapon };
+    };
+  }
+
+  function createNaive() {
+    return function (state) {
+      const dx = state.opponent.x - state.own.x;
+      const dy = state.own.y - state.opponent.y; // up is positive
+      let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+      if (angle < 0) angle += 360;
+      if (angle > 180) angle = angle > 270 ? 0 : 180;
+      return { angle: angle, power: 60, weapon: "shell" };
+    };
+  }
+
+  function createBracketer() {
+    return function (state) {
+      const dx = state.opponent.x - state.own.x;
+      const towardRight = dx >= 0;
+      const range = Math.abs(dx);
+      let angle = towardRight ? 48 : 132;
+      let power = clamp((range / state.field.width) * 95 + 18, 30, 90);
+      const hist = state.shotHistory;
+      if (hist && hist.length) {
+        let last = null;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (!hist[i].skipped && hist[i].impactX != null) {
+            last = hist[i];
+            break;
+          }
+        }
+        if (last) {
+          const err = last.impactX - state.opponent.x;
+          // Overshot if impact is past the opponent from our side
+          const overshot = towardRight ? err > 0 : err < 0;
+          const adj = clamp(Math.abs(err) / state.field.width * 90, 3, 22);
+          if (overshot) power -= adj;
+          else power += adj;
+          // If we slammed a nearby hill (impact much closer to us than the enemy)
+          const travel = Math.abs(last.impactX - state.own.x);
+          if (travel < Math.abs(dx) * 0.55) {
+            angle = towardRight ? clamp(angle + 8, 20, 80) : clamp(angle - 8, 100, 160);
+            power += 6;
+          }
+          if (last.hit) {
+            // Nudge only slightly
+            power = last.power + (state.wind - 0) * 0.02;
+            angle = last.angle;
+          }
+        }
+      }
+      // Crude wind nudge
+      if (towardRight) power -= state.wind * 0.06;
+      else power += state.wind * 0.06;
+      return {
+        angle: clamp(angle, 5, 175),
+        power: clamp(power, 15, 100),
+        weapon: "shell",
+      };
+    };
+  }
+
+  function missScore(events, opponent, own) {
+    let best = Infinity;
+    let oppDmg = 0;
+    let selfDmg = 0;
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      const weapon = ev.weapon;
+      const dOpp = damageAt(
+        Math.hypot(ev.x - opponent.x, ev.y - opponent.y),
+        weapon.blast,
+        weapon.damage
+      );
+      const dSelf = damageAt(
+        Math.hypot(ev.x - own.x, ev.y - own.y),
+        weapon.blast,
+        weapon.damage
+      );
+      oppDmg += dOpp;
+      selfDmg += dSelf;
+      const dist = Math.hypot(ev.x - opponent.x, ev.y - opponent.y);
+      if (dist < best) best = dist;
+    }
+    if (oppDmg > 0) {
+      // Prefer more damage to opponent, penalize self-damage heavily
+      return -1000 - oppDmg * 10 + selfDmg * 20;
+    }
+    return best + selfDmg * 8;
+  }
+
+  function createSolver() {
+    return function (state) {
+      // Reconstruct a lightweight world for traces (read-only terrain)
+      const world = {
+        width: state.field.width,
+        height: state.field.height,
+        terrain: state.terrain,
+        gravity: state.gravity,
+        wind: state.wind,
+        left:
+          state.own.side === "left"
+            ? { x: state.own.x, y: state.own.y }
+            : { x: state.opponent.x, y: state.opponent.y },
+        right:
+          state.own.side === "right"
+            ? { x: state.own.x, y: state.own.y }
+            : { x: state.opponent.x, y: state.opponent.y },
+        currentSide: state.own.side,
+      };
+      const towardRight = state.opponent.x >= state.own.x;
+      const angleMin = towardRight ? 15 : 100;
+      const angleMax = towardRight ? 80 : 165;
+      const weapons = ["shell", "blast"];
+
+      let best = {
+        score: Infinity,
+        angle: towardRight ? 50 : 130,
+        power: 70,
+        weapon: "shell",
+      };
+
+      function consider(angle, power, weapon) {
+        const cmd = { angle: angle, power: power, weapon: weapon };
+        const events = projectilesFor(world, state.own.side, cmd, false);
+        const score = missScore(events, state.opponent, state.own);
+        if (score < best.score) {
+          best = { score: score, angle: angle, power: power, weapon: weapon };
+        }
+        return score;
+      }
+
+      // Coarse grid
+      for (let wi = 0; wi < weapons.length; wi++) {
+        const weapon = weapons[wi];
+        for (let a = angleMin; a <= angleMax; a += 5) {
+          for (let p = 25; p <= 100; p += 5) {
+            const s = consider(a, p, weapon);
+            if (s < -1000 && best.weapon === "shell" && weapon === "shell") {
+              // Early exit on a solid direct-ish shell hit; still refine later
+            }
+          }
+        }
+      }
+
+      // Refine around the best
+      const rA0 = Math.max(angleMin, best.angle - 6);
+      const rA1 = Math.min(angleMax, best.angle + 6);
+      const rP0 = Math.max(15, best.power - 8);
+      const rP1 = Math.min(100, best.power + 8);
+      for (let a = rA0; a <= rA1; a += 1) {
+        for (let p = rP0; p <= rP1; p += 1) {
+          consider(a, p, best.weapon);
+        }
+      }
+
+      // If we still miss, try a roller landed short of the enemy
+      if (best.score > state.weapons[0].blast + TANK_RADIUS) {
+        const rollerBest = { score: best.score, angle: best.angle, power: best.power };
+        for (let a = angleMin; a <= angleMax; a += 6) {
+          for (let p = 20; p <= 95; p += 8) {
+            const cmd = { angle: a, power: p, weapon: "roller" };
+            const events = projectilesFor(world, state.own.side, cmd, false);
+            const score = missScore(events, state.opponent, state.own);
+            if (score < rollerBest.score) {
+              rollerBest.score = score;
+              rollerBest.angle = a;
+              rollerBest.power = p;
+            }
+          }
+        }
+        if (rollerBest.score + 4 < best.score) {
+          best = {
+            score: rollerBest.score,
+            angle: rollerBest.angle,
+            power: rollerBest.power,
+            weapon: "roller",
+          };
+        }
+      }
+
+      return { angle: best.angle, power: best.power, weapon: best.weapon };
+    };
+  }
+
+
+  // Shaky Solver: same physics search as Solver, but it misjudges the wind
+  // and has hand tremor on angle and power, so it has to adjust over turns.
+  function createShakySolver(rng) {
+    const r = typeof rng === "function" ? rng : Math.random;
+    const solve = createSolver();
+    function gauss() {
+      return (r() + r() + r() - 1.5) / 0.5; // roughly unit-ish spread
+    }
+    return function (state) {
+      const windErr = gauss() * WIND_MAX * 0.18;
+      const seen = Object.assign({}, state, { wind: state.wind + windErr });
+      const cmd = solve(seen);
+      return {
+        angle: clamp(Math.round(cmd.angle + gauss() * 2.5), 0, 180),
+        power: clamp(Math.round(cmd.power + gauss() * 3), 0, 100),
+        weapon: cmd.weapon,
+      };
+    };
+  }
+
+  const BOT_FACTORIES = {
+    random: function (ctx) {
+      return createRandom(ctx && ctx.rng ? ctx.rng : Math.random);
+    },
+    naive: function () {
+      return createNaive();
+    },
+    bracketer: function () {
+      return createBracketer();
+    },
+    solver: function () {
+      return createSolver();
+    },
+    shaky: function (ctx) {
+      return createShakySolver(ctx && ctx.rng ? ctx.rng : Math.random);
+    },
+  };
+
+  const BUILTIN_BOTS = Object.freeze(["random", "naive", "bracketer", "solver", "shaky"]);
+
+  function createBot(name, ctx) {
+    const key = String(name || "").toLowerCase();
+    const factory = BOT_FACTORIES[key];
+    if (!factory) throw new Error("Unknown bot: " + name);
+    return factory(ctx || {});
+  }
+
+  function simulateMatch(leftCtrl, rightCtrl, opts) {
+    opts = opts || {};
+    const world = createWorld(opts);
+    const limit = opts.timeLimitMs == null ? BOT_TIME_LIMIT_MS : opts.timeLimitMs;
+    const leftFn =
+      typeof leftCtrl === "function" ? leftCtrl : createBot(leftCtrl, { rng: world.rng });
+    const rightFn =
+      typeof rightCtrl === "function"
+        ? rightCtrl
+        : createBot(rightCtrl, { rng: world.rng });
+
+    let guard = 0;
+    while (!world.over && guard++ < MAX_TURNS + 2) {
+      const side = world.side;
+      const fn = side === "left" ? leftFn : rightFn;
+      const snap = snapshotFor(world, side);
+      const result = runBot(fn, snap, limit);
+      resolveShot(world, result.cmd, {
+        error: result.error,
+        timeout: result.timeout,
+        path: false,
+      });
+    }
+    if (!world.over) {
+      world.over = true;
+      world.winner = "draw";
+    }
+    const shots = world.stats.shots.left + world.stats.shots.right;
+    const hits = world.stats.hits.left + world.stats.hits.right;
+    return {
+      winner: world.winner,
+      turns: world.turn,
+      seed: world.seed,
+      shots: world.stats.shots,
+      hits: world.stats.hits,
+      errors: world.stats.errors,
+      timeouts: world.stats.timeouts,
+      firstHitShots: world.stats.firstHitShots,
+      accuracy: shots ? hits / shots : 0,
+      leftoverHp: { left: world.left.hp, right: world.right.hp },
+    };
+  }
+
+  function simulateSeries(opts) {
+    opts = opts || {};
+    const n = opts.n || 20;
+    const seed = opts.seed == null ? 42 : opts.seed >>> 0;
+    const left = opts.left;
+    const right = opts.right;
+    const wins = { left: 0, right: 0, draw: 0 };
+    const errors = { left: 0, right: 0 };
+    const timeouts = { left: 0, right: 0 };
+    const shots = { left: 0, right: 0 };
+    const hits = { left: 0, right: 0 };
+    let firstHitSum = 0;
+    let firstHitN = 0;
+    const matches = [];
+    for (let i = 0; i < n; i++) {
+      // Fresh controllers per match so bracketer state resets
+      const res = simulateMatch(left, right, {
+        seed: (seed + i * 997) >>> 0,
+        timeLimitMs: opts.timeLimitMs,
+      });
+      wins[res.winner]++;
+      errors.left += res.errors.left;
+      errors.right += res.errors.right;
+      timeouts.left += res.timeouts.left;
+      timeouts.right += res.timeouts.right;
+      shots.left += res.shots.left;
+      shots.right += res.shots.right;
+      hits.left += res.hits.left;
+      hits.right += res.hits.right;
+      if (res.firstHitShots != null) {
+        firstHitSum += res.firstHitShots;
+        firstHitN++;
+      }
+      matches.push(res);
+    }
+    const totalShots = shots.left + shots.right;
+    const totalHits = hits.left + hits.right;
+    return {
+      n: n,
+      seed: seed,
+      left: typeof left === "function" ? "custom" : left,
+      right: typeof right === "function" ? "custom" : right,
+      wins: wins,
+      winRateLeft: wins.left / n,
+      winRateRight: wins.right / n,
+      drawRate: wins.draw / n,
+      avgShotsToFirstHit: firstHitN ? firstHitSum / firstHitN : null,
+      firstHitMatches: firstHitN,
+      accuracy: {
+        left: shots.left ? hits.left / shots.left : 0,
+        right: shots.right ? hits.right / shots.right : 0,
+        overall: totalShots ? totalHits / totalShots : 0,
+      },
+      shots: shots,
+      hits: hits,
+      errors: errors,
+      timeouts: timeouts,
+      matches: matches,
+    };
+  }
+
+  return {
+    CONSTANTS: CONSTANTS,
+    WEAPONS: WEAPONS,
+    WEAPON_LIST: WEAPON_LIST,
+    BUILTIN_BOTS: BUILTIN_BOTS,
+    createRng: mulberry32,
+    generateTerrain: generateTerrain,
+    createWorld: createWorld,
+    snapshotFor: snapshotFor,
+    compileCustom: compileCustom,
+    runBot: runBot,
+    createBot: createBot,
+    createRandom: createRandom,
+    createNaive: createNaive,
+    createBracketer: createBracketer,
+    createSolver: createSolver,
+    createShakySolver: createShakySolver,
+    projectilesFor: projectilesFor,
+    integrateProjectile: integrateProjectile,
+    resolveShot: resolveShot,
+    sanitizeCmd: sanitizeCmd,
+    launchVelocity: launchVelocity,
+    muzzlePos: muzzlePos,
+    terrainAt: terrainAt,
+    carveCrater: carveCrater,
+    carveTrench: carveTrench,
+    simulateMatch: simulateMatch,
+    simulateSeries: simulateSeries,
+    applyImpacts: applyImpacts,
+    packTrajectory: packTrajectory,
+    compactTerrain: compactTerrain,
+  };
+});
+
+  </script>
+  <script>
+(function () {
+  "use strict";
+  const E = window.BotTanks;
+  const C = E.CONSTANTS;
+  const W = C.WIDTH;
+  const H = C.HEIGHT;
+  const DEFAULT_CUSTOM = [
+    "// Return { angle: 0-180, power: 0-100, weapon: 'shell'|'blast'|'triple'|'roller' }",
+    "// state.own / state.opponent: {x, y, hp, maxHp}",
+    "// state.wind (px/s²), state.gravity, state.terrain, state.field, state.shotHistory",
+    "function (state) {",
+    "  const right = state.opponent.x >= state.own.x;",
+    "  return { angle: right ? 50 : 130, power: 70, weapon: 'shell' };",
+    "}"
+  ].join("\n");
+
+  const BOT_OPTIONS = [
+    { id: "solver", label: "Solver" },
+    { id: "shaky", label: "Shaky Solver" },
+    { id: "bracketer", label: "Bracketer" },
+    { id: "naive", label: "Naive" },
+    { id: "random", label: "Random" },
+    { id: "custom", label: "Custom" },
+    { id: "human", label: "Human" }
+  ];
+
+  const LOCAL_TAUNTS = {
+    solver: ["Solved.", "The arc was inevitable.", "Wind accounted for."],
+    shaky: ["Almost had it.", "Hand slipped.", "Close enough."],
+    bracketer: ["Adjusting fire.", "Bracketing you in.", "Adding power."],
+    naive: ["Straight at you.", "Point and shoot.", "Line of sight never lies."],
+    random: ["Yeet.", "I meant to do that.", "Physics is a suggestion."],
+    custom: ["From the textarea.", "Custom delivery."]
+  };
+
+  const canvas = document.getElementById("field");
+  const ctx = canvas.getContext("2d");
+  const toastEl = document.getElementById("toast");
+  const metaEl = document.getElementById("matchMeta");
+  const leftSel = document.getElementById("leftBot");
+  const rightSel = document.getElementById("rightBot");
+  const leftCode = document.getElementById("leftCode");
+  const rightCode = document.getElementById("rightCode");
+  const leftErr = document.getElementById("leftErr");
+  const rightErr = document.getElementById("rightErr");
+  const btnFire = document.getElementById("btnFire");
+  const btnNew = document.getElementById("btnNew");
+  const btnPause = document.getElementById("btnPause");
+  const btnSeries = document.getElementById("btnSeries");
+  const seriesOut = document.getElementById("seriesOut");
+  const weaponRow = document.getElementById("weaponRow");
+  const ledgerEl = document.getElementById("ledger");
+  const lobbyEl = document.getElementById("lobbyList");
+  const liveStatus = document.getElementById("liveStatus");
+
+  leftCode.value = DEFAULT_CUSTOM;
+  rightCode.value = DEFAULT_CUSTOM;
+
+  BOT_OPTIONS.forEach(function (o) {
+    const a = document.createElement("option");
+    a.value = o.id; a.textContent = o.label;
+    leftSel.appendChild(a);
+    rightSel.appendChild(a.cloneNode(true));
+  });
+  leftSel.value = "solver";
+  rightSel.value = "bracketer";
+
+  const weaponIds = ["shell", "blast", "triple", "roller"];
+  let selectedWeapon = "shell";
+  weaponIds.forEach(function (id) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.weapon = id;
+    b.textContent = E.WEAPONS[id].name;
+    b.addEventListener("click", function () {
+      selectedWeapon = id;
+      syncWeaponButtons();
+    });
+    weaponRow.appendChild(b);
+  });
+  function syncWeaponButtons() {
+    weaponRow.querySelectorAll("button").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.weapon === selectedWeapon);
+    });
+  }
+  syncWeaponButtons();
+
+  const stars = [];
+  const dust = [];
+  (function seedStars() {
+    const rng = E.createRng(96021);
+    for (let i = 0; i < 140; i++) {
+      stars.push({
+        x: rng() * W,
+        y: rng() * H * 0.85,
+        r: rng() * 1.3 + 0.3,
+        a: 0.25 + rng() * 0.7
+      });
+    }
+    for (let i = 0; i < 60; i++) {
+      dust.push({
+        x: rng() * W,
+        y: rng() * H * 0.7,
+        r: 6 + rng() * 16,
+        a: 0.03 + rng() * 0.07,
+        hue: 240 + rng() * 80
+      });
+    }
+  })();
+
+  let world = null;
+  let playing = true;
+  let mode = "idle";
+  let flight = null;
+  let lastRecord = null;
+  let botTimer = 0;
+  let seed = 1;
+  const aim = {
+    left: { angle: 50, power: 70 },
+    right: { angle: 130, power: 70 }
+  };
+
+  const fx = {
+    particles: [],
+    shocks: [],
+    flashes: [],
+    smokes: [],
+    floaters: [],
+    taunts: [],
+    shake: 0,
+    recoil: { left: 0, right: 0 },
+    wreck: { left: false, right: false },
+    wreckAge: { left: 0, right: 0 },
+    pendingWreck: [],
+    banner: null,
+    streaks: [],
+    dirt: []
+  };
+
+  function resetFx() {
+    fx.particles = [];
+    fx.shocks = [];
+    fx.flashes = [];
+    fx.smokes = [];
+    fx.floaters = [];
+    fx.taunts = [];
+    fx.shake = 0;
+    fx.recoil.left = 0;
+    fx.recoil.right = 0;
+    fx.wreck.left = false;
+    fx.wreck.right = false;
+    fx.wreckAge.left = 0;
+    fx.wreckAge.right = 0;
+    fx.pendingWreck = [];
+    fx.banner = null;
+    fx.streaks = [];
+    fx.dirt = [];
+  }
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function spawnMuzzle(tank, angleDeg, weaponId) {
+    const muz = E.muzzlePos(tank, angleDeg);
+    fx.flashes.push({ x: muz.x, y: muz.y, angle: angleDeg, t: 0, life: 0.18, weapon: weaponId });
+    for (let i = 0; i < 10; i++) {
+      const a = ((angleDeg + rand(-18, 18)) * Math.PI) / 180;
+      fx.smokes.push({
+        x: muz.x, y: muz.y,
+        vx: Math.cos(a) * rand(20, 70),
+        vy: -Math.sin(a) * rand(20, 70) - 10,
+        t: 0, life: rand(0.4, 0.8), r: rand(4, 9)
+      });
+    }
+  }
+
+  function spawnTaunt(side, text) {
+    if (!text) return;
+    fx.taunts.push({ side: side, text: String(text).slice(0, 80), t: 0, life: 3.2 });
+  }
+
+  function spawnImpactFx(imp) {
+    const x = imp.x, y = imp.y;
+    const weapon = E.WEAPONS[imp.weapon] || E.WEAPONS.shell;
+    const blast = weapon.blast || 32;
+    fx.shake = Math.max(fx.shake, Math.min(14, blast / 6));
+    fx.shocks.push({ x: x, y: y, t: 0, life: 0.55, r: blast, rings: 3 });
+    fx.shocks.push({ x: x, y: y, t: 0, life: 0.28, r: blast * 0.45, rings: 1, core: true });
+    const n = 18 + Math.round(blast / 3);
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2);
+      const sp = rand(40, 220) * (blast / 40);
+      fx.particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - rand(30, 120),
+        t: 0, life: rand(0.4, 0.9),
+        r: rand(1.2, 3.2),
+        kind: "debris",
+        color: Math.random() < 0.5 ? "#ffd27a" : "#c9b8ff"
+      });
+    }
+    for (let i = 0; i < 10; i++) {
+      fx.particles.push({
+        x: x + rand(-8, 8), y: y,
+        vx: rand(-40, 40), vy: rand(-180, -40),
+        t: 0, life: rand(0.5, 1),
+        r: rand(1, 2.4), kind: "spark", color: "#fff3c0"
+      });
+    }
+  }
+
+  function spawnFloatersFromTurn(turn) {
+    if (!turn) return;
+    const dl = turn.damageToLeft || 0;
+    const dr = turn.damageToRight || 0;
+    function flo(side, dmg, tank) {
+      if (dmg > 0.5) {
+        fx.floaters.push({
+          x: tank.x, y: tank.y - 28,
+          text: "-" + Math.round(dmg),
+          t: 0, life: 1.2, color: "#ff6b8a", scale: 1
+        });
+      }
+    }
+    if (world) {
+      flo("left", dl, world.left);
+      flo("right", dr, world.right);
+    }
+    const anyHit = (turn.impacts || []).some(function (im) { return im.hitTank; });
+    const dealt = turn.side === "left" ? dr : dl;
+    if (anyHit) {
+      const tnk = anyHit && world ? turn.impacts.find(function (im) { return im.hitTank; }) : null;
+      const side = tnk && tnk.hitTank;
+      const tank = side && world[side];
+      if (tank) {
+        fx.floaters.push({
+          x: tank.x, y: tank.y - 48,
+          text: "DIRECT HIT!", t: 0, life: 1.1, color: "#fff6d8", scale: 1.15
+        });
+      }
+    } else if (dealt < 0.5 && !turn.skipped) {
+      const imp = (turn.impacts && turn.impacts[0]) || null;
+      fx.floaters.push({
+        x: imp ? imp.x : W / 2,
+        y: (imp ? imp.y : H / 2) - 16,
+        text: "MISS", t: 0, life: 0.9, color: "#c8c2dc", scale: 1
+      });
+    }
+  }
+
+  function maybeWreck(turn) {
+    if (!turn || !turn.hpBefore || !turn.hpAfter) return;
+    ["left", "right"].forEach(function (side) {
+      if (turn.hpBefore[side] > 0 && turn.hpAfter[side] <= 0 && !fx.wreck[side]) {
+        const tank = turn.posAfter ? turn.posAfter[side] : (world && world[side]);
+        if (!tank) return;
+        fx.pendingWreck.push({ side: side, t: 0, x: tank.x, y: tank.y });
+      }
+    });
+    if (turn.winnerAfter) {
+      const label = turn.winnerAfter === "draw" ? "DRAW" : (turn.winnerAfter.toUpperCase() + " WINS");
+      fx.banner = { text: label, t: 0 };
+    }
+  }
+
+  function controllerKind(side) {
+    return (side === "left" ? leftSel : rightSel).value;
+  }
+
+  function syncPanels() {
+    document.getElementById("leftCustomBox").classList.toggle("on", leftSel.value === "custom");
+    document.getElementById("rightCustomBox").classList.toggle("on", rightSel.value === "custom");
+    document.getElementById("leftHuman").classList.toggle("on", leftSel.value === "human");
+    document.getElementById("rightHuman").classList.toggle("on", rightSel.value === "human");
+    updateFireEnabled();
+  }
+
+  function updateFireEnabled() {
+    if (arenaMode !== "local") {
+      btnFire.disabled = true;
+      return;
+    }
+    if (!world || world.over || mode === "flying") {
+      btnFire.disabled = true;
+      return;
+    }
+    btnFire.disabled = controllerKind(world.side) !== "human";
+  }
+
+  function setToast(text) { toastEl.textContent = text; }
+
+  function compileSide(side) {
+    const errEl = side === "left" ? leftErr : rightErr;
+    errEl.textContent = "";
+    const kind = controllerKind(side);
+    if (kind === "human") return { kind: "human" };
+    if (kind === "custom") {
+      const code = (side === "left" ? leftCode : rightCode).value;
+      try {
+        const fn = E.compileCustom(code);
+        if (fn.__compileError) {
+          errEl.textContent = "Compile error: " + fn.__compileError;
+          return { kind: "custom", fn: fn };
+        }
+        return { kind: "custom", fn: fn };
+      } catch (err) {
+        errEl.textContent = err.message;
+        return { kind: "custom", fn: function () { throw err; } };
+      }
+    }
+    return { kind: kind, fn: E.createBot(kind, { rng: world ? world.rng : Math.random }) };
+  }
+
+  let leftCtrl = null;
+  let rightCtrl = null;
+
+  function newMatch() {
+    seed = (Math.floor(Math.random() * 0xffffffff) || 1) >>> 0;
+    world = E.createWorld({ seed: seed });
+    leftCtrl = compileSide("left");
+    rightCtrl = compileSide("right");
+    mode = world.over ? "gameover" : "waiting";
+    flight = null;
+    lastRecord = null;
+    botTimer = 0.45;
+    playing = true;
+    btnPause.textContent = "Pause";
+    resetFx();
+    setToast((world.side === "left" ? "Left" : "Right") + " to fire  ·  wind " + windLabel(world.wind));
+    updateFireEnabled();
+    updateMeta();
+  }
+
+  function windLabel(w) {
+    const mag = Math.abs(w);
+    if (mag < 6) return "still";
+    const dir = w < 0 ? "← west" : "east →";
+    return dir + "  " + mag.toFixed(0);
+  }
+
+  function updateMeta() {
+    if (!world) { metaEl.textContent = "No match yet"; return; }
+    const turn = "Turn " + world.turn + " · " + (world.over ? "match over" : (world.side + " to fire"));
+    const hp = "HP  " + Math.round(world.left.hp) + " — " + Math.round(world.right.hp);
+    const wind = "Wind " + windLabel(world.wind);
+    const end = world.over ? "  ·  Winner: " + world.winner : "";
+    const live = arenaMode === "live" && liveMatchId ? "  ·  " + liveMatchId : ("  ·  seed " + world.seed);
+    metaEl.innerHTML = "<strong>" + turn + "</strong><br>" + hp + "  ·  " + wind + live + end;
+  }
+
+  function humanCmd(side) {
+    const a = aim[side];
+    return E.sanitizeCmd({ angle: a.angle, power: a.power, weapon: selectedWeapon });
+  }
+
+  function eventsFromTurn(turn) {
+    const list = turn.trajectories || [];
+    return list.map(function (tr) {
+      return {
+        x: tr.impactX,
+        y: tr.impactY,
+        path: tr.path,
+        rolled: tr.rolled,
+        rollXs: tr.rollXs,
+        hitTank: tr.hitTank,
+        impact: tr.impact,
+        oob: tr.oob,
+        steps: tr.steps,
+        weapon: E.WEAPONS[tr.weapon] || E.WEAPONS.shell,
+        angle: tr.angle,
+        damageLeft: tr.damageLeft,
+        damageRight: tr.damageRight
+      };
+    });
+  }
+
+  function beginShot(cmd, meta, extra) {
+    extra = extra || {};
+    if (!world) return;
+    if (world.over && !(extra.live && extra.turn) && !extra.turn) return;
+    if (!cmd && !extra.turn) {
+      lastRecord = E.resolveShot(world, null, meta || {});
+      mode = world.over ? "gameover" : "waiting";
+      botTimer = 0.4;
+      afterRecord(lastRecord, extra.taunt);
+      return;
+    }
+    const turn = extra.turn || null;
+    const events = turn ? eventsFromTurn(turn) : E.projectilesFor(world, world.side || extra.side || "left", cmd, true);
+    const side = turn ? turn.side : world.side;
+    const angle = cmd ? cmd.angle : (turn ? turn.angle : 45);
+    const weaponId = cmd ? cmd.weapon : (turn ? turn.weapon : "shell");
+    const tank = world[side];
+    if (tank) spawnMuzzle(tank, angle, weaponId);
+    fx.recoil[side] = 1;
+    if (extra.taunt) spawnTaunt(side, extra.taunt);
+    flight = {
+      events: events,
+      cmd: cmd,
+      meta: meta || {},
+      t: 0,
+      duration: 0,
+      turn: turn,
+      applyState: extra.applyState || null,
+      live: !!extra.live
+    };
+    let maxSteps = 1;
+    for (let i = 0; i < events.length; i++) {
+      if ((events[i].steps || (events[i].path && events[i].path.length) || 1) > maxSteps) {
+        maxSteps = events[i].steps || events[i].path.length || 1;
+      }
+    }
+    flight.duration = Math.max(0.4, (maxSteps * C.DT) / 1.15);
+    mode = "flying";
+    updateFireEnabled();
+    setToast("Shot in the air");
+  }
+
+  function afterRecord(record, taunt) {
+    const packed = record && record.turnNumber != null ? record : lastRecord;
+    if (packed) {
+      if (taunt) packed.taunt = packed.taunt || taunt;
+      if (!packed.agentName) {
+        packed.agentName = packed.side === "left"
+          ? (arenaMode === "local" ? controllerKind("left") : "left")
+          : (arenaMode === "local" ? controllerKind("right") : "right");
+      }
+      spawnFloatersFromTurn(packed);
+      maybeWreck(packed);
+      if (arenaMode === "local") appendLedger(packed, packed.agentName);
+    }
+    updateMeta();
+    if (world.over && !replayQueue.length) {
+      mode = "gameover";
+      const label = world.winner === "draw" ? "Draw" : (world.winner === "left" ? "Left tank wins" : "Right tank wins");
+      setToast(label);
+      if (!fx.banner) fx.banner = { text: label.toUpperCase(), t: 0 };
+      updateFireEnabled();
+      updateLiveTelemetry();
+      return;
+    }
+    setToast((world.side === "left" ? "Left" : "Right") + " to fire  ·  wind " + windLabel(world.wind));
+    updateFireEnabled();
+  }
+
+  function finishFlight() {
+    const f = flight;
+    flight = null;
+    if (f && f.live) {
+      if (f.applyState) applyServerState(f.applyState, false);
+      else if (f.turn) applyTurnResults(f.turn);
+      lastRecord = f.turn;
+      if (lastRecord && lastRecord.impacts) {
+        lastRecord.impacts.forEach(function (im) {
+          if (im.impact || im.hitTank) spawnImpactFx(im);
+        });
+      }
+      afterRecord(lastRecord, f.turn && f.turn.taunt);
+      maybeStartReplayNext();
+      return;
+    }
+    lastRecord = E.resolveShot(world, f.cmd, f.meta);
+    if (lastRecord && lastRecord.events) {
+      for (let i = 0; i < lastRecord.events.length; i++) {
+        const ev = lastRecord.events[i];
+        if (ev.impact || ev.hitTank) spawnImpactFx({ x: ev.x, y: ev.y, weapon: ev.weapon && ev.weapon.id, hitTank: ev.hitTank, impact: ev.impact });
+      }
+    }
+    mode = world.over ? "gameover" : "waiting";
+    botTimer = 0.55;
+    afterRecord(lastRecord, f && f.meta && f.meta.taunt);
+  }
+
+  function localTaunt(kind) {
+    const list = LOCAL_TAUNTS[kind];
+    if (!list) return null;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function requestBotOrWait(dt) {
+    if (arenaMode !== "local") return;
+    if (!world || world.over || mode !== "waiting") return;
+    const kind = controllerKind(world.side);
+    if (kind === "human") return;
+    if (!document.getElementById("autoPlay").checked || !playing) return;
+    botTimer -= dt;
+    if (botTimer > 0) return;
+    const pack = world.side === "left" ? leftCtrl : rightCtrl;
+    const fn = pack && pack.fn ? pack.fn : E.createBot(kind, { rng: world.rng });
+    const snap = E.snapshotFor(world, world.side);
+    const result = E.runBot(fn, snap, C.BOT_TIME_LIMIT_MS);
+    const taunt = localTaunt(kind);
+    if (!result.ok) {
+      setToast((world.side === "left" ? "Left" : "Right") + (result.timeout ? " timed out — wasted turn" : " errored — wasted turn"));
+      beginShot(null, { error: result.error, timeout: result.timeout, taunt: taunt });
+      return;
+    }
+    beginShot(result.cmd, { taunt: taunt }, { taunt: taunt });
+  }
+
+  function fireHuman() {
+    if (arenaMode !== "local") return;
+    if (!world || world.over || mode !== "waiting") return;
+    if (controllerKind(world.side) !== "human") return;
+    beginShot(humanCmd(world.side), {});
+  }
+
+  btnFire.addEventListener("click", fireHuman);
+  btnNew.addEventListener("click", function () {
+    if (arenaMode !== "local") return;
+    newMatch();
+  });
+  btnPause.addEventListener("click", function () {
+    playing = !playing;
+    btnPause.textContent = playing ? "Pause" : "Resume";
+  });
+  leftSel.addEventListener("change", function () {
+    if (world) leftCtrl = compileSide("left");
+    syncPanels();
+  });
+  rightSel.addEventListener("change", function () {
+    if (world) rightCtrl = compileSide("right");
+    syncPanels();
+  });
+  leftCode.addEventListener("change", function () { if (world) leftCtrl = compileSide("left"); });
+  rightCode.addEventListener("change", function () { if (world) rightCtrl = compileSide("right"); });
+
+  function bindSlider(side, kind) {
+    const el = document.getElementById(side + (kind === "angle" ? "Angle" : "Power"));
+    const lab = document.getElementById(side + (kind === "angle" ? "AngleV" : "PowerV"));
+    el.addEventListener("input", function () {
+      const v = Number(el.value);
+      aim[side][kind] = v;
+      lab.textContent = kind === "angle" ? v + "°" : String(v);
+    });
+  }
+  bindSlider("left", "angle");
+  bindSlider("left", "power");
+  bindSlider("right", "angle");
+  bindSlider("right", "power");
+
+  document.addEventListener("keydown", function (ev) {
+    if (arenaMode !== "local") return;
+    if (!world || world.over) return;
+    if (["INPUT", "TEXTAREA", "SELECT"].indexOf(ev.target.tagName) >= 0) return;
+    const side = world.side;
+    if (controllerKind(side) !== "human" || mode !== "waiting") return;
+    const a = aim[side];
+    const angleEl = document.getElementById(side + "Angle");
+    const powerEl = document.getElementById(side + "Power");
+    let used = true;
+    if (ev.key === "ArrowLeft" || ev.key === "a" || ev.key === "A") a.angle = Math.max(0, a.angle - 1);
+    else if (ev.key === "ArrowRight" || ev.key === "d" || ev.key === "D") a.angle = Math.min(180, a.angle + 1);
+    else if (ev.key === "ArrowUp" || ev.key === "w" || ev.key === "W") a.power = Math.min(100, a.power + 1);
+    else if (ev.key === "ArrowDown" || ev.key === "s" || ev.key === "S") a.power = Math.max(0, a.power - 1);
+    else if (ev.key === "1") selectedWeapon = "shell";
+    else if (ev.key === "2") selectedWeapon = "blast";
+    else if (ev.key === "3") selectedWeapon = "triple";
+    else if (ev.key === "4") selectedWeapon = "roller";
+    else if (ev.key === " " || ev.key === "Enter") { ev.preventDefault(); fireHuman(); return; }
+    else used = false;
+    if (!used) return;
+    ev.preventDefault();
+    angleEl.value = a.angle;
+    powerEl.value = a.power;
+    document.getElementById(side + "AngleV").textContent = a.angle + "°";
+    document.getElementById(side + "PowerV").textContent = String(a.power);
+    syncWeaponButtons();
+  });
+
+  function fmtPct(x) { return (x * 100).toFixed(1) + "%"; }
+
+  btnSeries.addEventListener("click", function () {
+    const n = Math.max(1, Math.min(500, Number(document.getElementById("seriesN").value) || 1));
+    const s = Number(document.getElementById("seriesSeed").value);
+    const seed0 = isFinite(s) ? (s >>> 0) : 42;
+    function ctrlFor(side) {
+      const kind = controllerKind(side);
+      if (kind === "human") return null;
+      if (kind === "custom") {
+        const code = (side === "left" ? leftCode : rightCode).value;
+        const errEl = side === "left" ? leftErr : rightErr;
+        try {
+          const fn = E.compileCustom(code);
+          if (fn.__compileError) errEl.textContent = "Compile error: " + fn.__compileError;
+          return fn;
+        } catch (err) {
+          errEl.textContent = err.message;
+          return function () { throw err; };
+        }
+      }
+      return kind;
+    }
+    const left = ctrlFor("left");
+    const right = ctrlFor("right");
+    if (!left || !right) {
+      seriesOut.textContent = "Headless series needs a bot on both sides (Human cannot be simulated).";
+      return;
+    }
+    seriesOut.textContent = "Running " + n + " matches…";
+    btnSeries.disabled = true;
+    setTimeout(function () {
+      const t0 = performance.now();
+      const report = E.simulateSeries({ n: n, seed: seed0, left: left, right: right });
+      const ms = performance.now() - t0;
+      const L = typeof left === "function" ? "custom" : left;
+      const R = typeof right === "function" ? "custom" : right;
+      seriesOut.textContent = [
+        L + " vs " + R + "  ·  n=" + report.n + "  ·  seed=" + report.seed + "  ·  " + ms.toFixed(0) + " ms",
+        "Wins  left " + report.wins.left + "   right " + report.wins.right + "   draws " + report.wins.draw,
+        "Win rate  left " + fmtPct(report.winRateLeft) + "   right " + fmtPct(report.winRateRight),
+        "Accuracy  left " + fmtPct(report.accuracy.left) + "   right " + fmtPct(report.accuracy.right) + "   overall " + fmtPct(report.accuracy.overall),
+        "Avg shots to first hit  " + (report.avgShotsToFirstHit == null ? "n/a" : report.avgShotsToFirstHit.toFixed(3)) + "  (" + report.firstHitMatches + " matches with a hit)",
+        "Shots  L/R " + report.shots.left + "/" + report.shots.right + "   hits L/R " + report.hits.left + "/" + report.hits.right,
+        "Errors  L/R " + report.errors.left + "/" + report.errors.right + "   timeouts L/R " + report.timeouts.left + "/" + report.timeouts.right
+      ].join("\n");
+      btnSeries.disabled = false;
+    }, 40);
+  });
+
+  function pointOnPath(path, u) {
+    if (!path || !path.length) return null;
+    if (u >= 1) return path[path.length - 1];
+    if (u <= 0) return path[0];
+    const f = u * (path.length - 1);
+    const i = Math.floor(f);
+    const t = f - i;
+    const a = path[i];
+    const b = path[Math.min(path.length - 1, i + 1)];
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, rolling: !!(b.rolling || a.rolling) };
+  }
+
+  function drawSky(wind, dt) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0b0a1c");
+    g.addColorStop(0.45, "#16103a");
+    g.addColorStop(1, "#2a1540");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    const n1 = ctx.createRadialGradient(W * 0.2, H * 0.1, 10, W * 0.2, H * 0.1, 280);
+    n1.addColorStop(0, "rgba(140, 50, 200, 0.28)");
+    n1.addColorStop(1, "rgba(140, 50, 200, 0)");
+    ctx.fillStyle = n1;
+    ctx.fillRect(0, 0, W, H);
+    const n2 = ctx.createRadialGradient(W * 0.85, H * 0.2, 10, W * 0.85, H * 0.15, 260);
+    n2.addColorStop(0, "rgba(40, 90, 200, 0.25)");
+    n2.addColorStop(1, "rgba(40, 90, 200, 0)");
+    ctx.fillStyle = n2;
+    ctx.fillRect(0, 0, W, H);
+    const drift = (wind || 0) * dt * 0.35;
+    for (let i = 0; i < dust.length; i++) {
+      const d = dust[i];
+      d.x = (d.x + drift + W) % W;
+      ctx.fillStyle = "hsla(" + d.hue + ", 60%, 60%, " + d.a + ")";
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, d.r * 2, d.r, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      s.x = (s.x + drift * 0.15 + W) % W;
+      ctx.fillStyle = "rgba(255,255,255," + s.a + ")";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Wind streaks
+    const wmag = wind || 0;
+    if (Math.abs(wmag) > 8) {
+      if (fx.streaks.length < 18) {
+        fx.streaks.push({
+          x: wmag > 0 ? rand(-40, W * 0.3) : rand(W * 0.7, W + 40),
+          y: rand(20, H * 0.55),
+          len: rand(18, 46),
+          spd: wmag * rand(1.1, 1.8)
+        });
+      }
+    }
+    ctx.strokeStyle = "rgba(200, 210, 255, 0.28)";
+    ctx.lineWidth = 1;
+    const nextS = [];
+    for (let i = 0; i < fx.streaks.length; i++) {
+      const st = fx.streaks[i];
+      st.x += st.spd * dt;
+      ctx.beginPath();
+      ctx.moveTo(st.x, st.y);
+      ctx.lineTo(st.x + (st.spd > 0 ? st.len : -st.len), st.y);
+      ctx.stroke();
+      if (st.x > -80 && st.x < W + 80) nextS.push(st);
+    }
+    fx.streaks = nextS;
+  }
+
+  function drawTerrain(terrain) {
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.lineTo(0, terrain[0]);
+    for (let x = 1; x < terrain.length; x++) ctx.lineTo(x, terrain[x]);
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, H * 0.25, 0, H);
+    g.addColorStop(0, "#3a2a55");
+    g.addColorStop(0.45, "#1b1433");
+    g.addColorStop(1, "#0c0a16");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, terrain[0]);
+    for (let x = 1; x < terrain.length; x++) ctx.lineTo(x, terrain[x]);
+    ctx.strokeStyle = "rgba(220, 190, 255, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  function drawTank(tank, color, barrelAngle, side) {
+    const wrecked = fx.wreck[side];
+    const x = tank.x;
+    const y = tank.y;
+    const kick = (fx.recoil[side] || 0);
+    const rad = (barrelAngle * Math.PI) / 180;
+    const recoilX = wrecked ? 0 : -Math.cos(rad) * kick * 6;
+    const recoilY = wrecked ? 0 : Math.sin(rad) * kick * 6;
+    ctx.save();
+    ctx.translate(x + recoilX * 0.3, y + recoilY * 0.3);
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0, C.TANK_RADIUS - 1, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const body = wrecked ? "#1a1418" : color;
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.roundRect(-14, -4, 28, 16, 5);
+    ctx.fill();
+    if (wrecked) {
+      ctx.fillStyle = "rgba(40,30,30,0.9)";
+      ctx.beginPath();
+      ctx.roundRect(-12, -2, 24, 10, 3);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,120,80,0.25)";
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "rgba(255,255,255,0.16)";
+      ctx.beginPath();
+      ctx.roundRect(-10, -2, 20, 6, 3);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.fillStyle = wrecked ? "#2a2224" : color;
+    ctx.arc(0, -2, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.rotate(-rad);
+    ctx.fillStyle = wrecked ? "#2a2224" : color;
+    const retract = wrecked ? 0 : kick * 7;
+    ctx.fillRect(4 - retract, -2.2, 18, 4.4);
+    ctx.restore();
+    ctx.restore();
+
+    const bw = 32, bh = 4;
+    const hx = x - bw / 2, hy = y - C.TANK_RADIUS - 12;
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(hx - 1, hy - 1, bw + 2, bh + 2);
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.fillRect(hx, hy, bw, bh);
+    const frac = Math.max(0, tank.hp / tank.maxHp);
+    ctx.fillStyle = wrecked || frac <= 0 ? "#5a3038" : (frac > 0.35 ? color : "#ff6b8a");
+    ctx.fillRect(hx, hy, bw * frac, bh);
+  }
+
+  function drawWind(w) {
+    const cx = W / 2, cy = 28;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = "rgba(8,6,18,0.55)";
+    ctx.beginPath();
+    ctx.roundRect(-70, -14, 140, 28, 14);
+    ctx.fill();
+    ctx.fillStyle = "#c8c2dc";
+    ctx.font = "11px 'Avenir Next', 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("WIND  " + windLabel(w), 0, 0);
+    ctx.restore();
+  }
+
+  function drawPreview(side) {
+    if (arenaMode !== "local") return;
+    if (!world || !document.getElementById("aimPreview").checked) return;
+    if (controllerKind(side) !== "human") return;
+    if (world.side !== side || mode !== "waiting") return;
+    const cmd = humanCmd(side);
+    const events = E.projectilesFor(world, side, cmd, true);
+    ctx.save();
+    ctx.setLineDash([4, 6]);
+    ctx.strokeStyle = side === "left" ? "rgba(107,224,255,0.7)" : "rgba(255,180,90,0.7)";
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < events.length; i++) {
+      const path = events[i].path;
+      if (!path || path.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      const cap = Math.min(path.length, 400);
+      for (let k = 1; k < cap; k++) ctx.lineTo(path[k].x, path[k].y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function trailColor(weaponId, i) {
+    if (weaponId === "blast") return "rgba(255, 140, 60, 0.7)";
+    if (weaponId === "triple") {
+      const cols = ["rgba(80,255,230,0.8)", "rgba(255,90,220,0.8)", "rgba(180,255,80,0.8)"];
+      return cols[i % 3];
+    }
+    if (weaponId === "roller") return "rgba(230, 200, 140, 0.75)";
+    return "rgba(255,240,200,0.7)";
+  }
+
+  function drawFlight(dt) {
+    if (!flight) return;
+    const u = Math.min(1, flight.t / flight.duration);
+    for (let i = 0; i < flight.events.length; i++) {
+      const ev = flight.events[i];
+      const path = ev.path || [];
+      const stagger = flight.events.length > 1 ? i * 0.06 : 0;
+      const uu = Math.max(0, Math.min(1, (u - stagger) / Math.max(0.001, 1 - stagger)));
+      const weaponId = ev.weapon && ev.weapon.id ? ev.weapon.id : ev.weapon;
+      if (path.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = trailColor(weaponId, i);
+        ctx.lineWidth = weaponId === "blast" ? 4 : 2.2;
+        const shown = Math.max(2, Math.floor(uu * path.length));
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let k = 1; k < shown; k++) ctx.lineTo(path[k].x, path[k].y);
+        ctx.stroke();
+      }
+      const p = pointOnPath(path, uu);
+      if (p && uu < 1) {
+        if (weaponId === "blast") {
+          const pulse = 5 + Math.sin((flight.t + i) * 20) * 2;
+          ctx.beginPath();
+          ctx.fillStyle = "rgba(255, 120, 40, 0.35)";
+          ctx.arc(p.x, p.y, pulse + 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.fillStyle = "#ffdf8a";
+          ctx.shadowColor = "#ff7a2a";
+          ctx.shadowBlur = 16;
+          ctx.arc(p.x, p.y, pulse, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          if (Math.random() < 0.6) {
+            fx.particles.push({
+              x: p.x, y: p.y, vx: rand(-20, 20), vy: rand(-10, 30),
+              t: 0, life: 0.4, r: rand(1, 2), kind: "ember", color: "#ff8a3a"
+            });
+          }
+        } else if (weaponId === "roller" && p.rolling) {
+          ctx.beginPath();
+          ctx.fillStyle = "#e8d2a0";
+          ctx.shadowColor = "#c9a56a";
+          ctx.shadowBlur = 8;
+          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          fx.dirt.push({
+            x: p.x, y: p.y, vx: rand(-40, 40), vy: rand(-90, -10),
+            t: 0, life: 0.35, r: rand(1.5, 3)
+          });
+          fx.particles.push({
+            x: p.x, y: p.y, vx: rand(-50, 50), vy: rand(-60, -5),
+            t: 0, life: 0.3, r: 1.2, kind: "spark", color: "#ffe8a0"
+          });
+        } else {
+          ctx.beginPath();
+          ctx.fillStyle = "#fff6d8";
+          ctx.shadowColor = weaponId === "triple" ? trailColor("triple", i) : "#ffd27a";
+          ctx.shadowBlur = 12;
+          ctx.arc(p.x, p.y, weaponId === "triple" ? 3 : 3.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          if (weaponId === "shell" && Math.random() < 0.5) {
+            fx.particles.push({
+              x: p.x, y: p.y, vx: rand(-15, 15), vy: rand(-10, 20),
+              t: 0, life: 0.28, r: 1.1, kind: "spark", color: "#ffe9a8"
+            });
+          }
+        }
+      }
+    }
+  }
+
+  function stepFx(dt) {
+    fx.shake *= Math.max(0, 1 - dt * 6);
+    ["left", "right"].forEach(function (s) {
+      fx.recoil[s] = Math.max(0, fx.recoil[s] - dt * 3.2);
+      if (fx.wreck[s]) fx.wreckAge[s] += dt;
+    });
+    const nextFlash = [];
+    for (let i = 0; i < fx.flashes.length; i++) {
+      const f = fx.flashes[i];
+      f.t += dt;
+      if (f.t < f.life) nextFlash.push(f);
+    }
+    fx.flashes = nextFlash;
+
+    function stepList(list, drag, gravity) {
+      const out = [];
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i];
+        p.t += dt;
+        if (p.t >= p.life) continue;
+        if (p.vx != null) {
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          if (gravity) p.vy += 420 * dt;
+          if (drag) {
+            p.vx *= 0.98;
+            p.vy *= 0.98;
+          }
+        }
+        out.push(p);
+      }
+      return out;
+    }
+    fx.smokes = stepList(fx.smokes, true, false);
+    fx.particles = stepList(fx.particles, true, true);
+    fx.dirt = stepList(fx.dirt, true, true);
+    fx.floaters = stepList(fx.floaters, false, false);
+    fx.floaters.forEach(function (f) { f.y -= 28 * dt; });
+    fx.taunts.forEach(function (t) { t.t += dt; });
+    fx.taunts = fx.taunts.filter(function (t) { return t.t < t.life; });
+    fx.shocks.forEach(function (s) { s.t += dt; });
+    fx.shocks = fx.shocks.filter(function (s) { return s.t < s.life; });
+    if (fx.banner) fx.banner.t += dt;
+
+    const stillPending = [];
+    for (let i = 0; i < fx.pendingWreck.length; i++) {
+      const pw = fx.pendingWreck[i];
+      pw.t += dt;
+      if (!pw.started) {
+        pw.started = true;
+        const bursts = [0, 0.12, 0.22, 0.38, 0.5];
+        bursts.forEach(function (off, idx) {
+          setTimeout(function () {
+            spawnImpactFx({ x: pw.x + rand(-10, 10), y: pw.y + rand(-8, 8), weapon: idx === 2 ? "blast" : "shell" });
+          }, off * 1000);
+        });
+      }
+      if (pw.t > 0.35) fx.wreck[pw.side] = true;
+      if (pw.t < 1.2) stillPending.push(pw);
+    }
+    fx.pendingWreck = stillPending;
+
+    if (fx.wreck.left || fx.wreck.right) {
+      ["left", "right"].forEach(function (side) {
+        if (!fx.wreck[side] || !world) return;
+        if (Math.random() < 0.2) {
+          fx.smokes.push({
+            x: world[side].x + rand(-8, 8),
+            y: world[side].y - 6,
+            vx: rand(-12, 12), vy: rand(-40, -10),
+            t: 0, life: 0.9, r: rand(5, 10)
+          });
+        }
+      });
+    }
+  }
+
+  function drawFx() {
+    fx.flashes.forEach(function (f) {
+      const u = 1 - f.t / f.life;
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate((-f.angle * Math.PI) / 180);
+      ctx.fillStyle = "rgba(255, 240, 180, " + (0.9 * u) + ")";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(18 * u + 10, -6 * u);
+      ctx.lineTo(28 * u + 16, 0);
+      ctx.lineTo(18 * u + 10, 6 * u);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    });
+    fx.smokes.forEach(function (s) {
+      const u = 1 - s.t / s.life;
+      ctx.fillStyle = "rgba(200,200,210," + (0.22 * u) + ")";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * (1 + s.t * 2), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    fx.dirt.forEach(function (d) {
+      const u = 1 - d.t / d.life;
+      ctx.fillStyle = "rgba(90, 70, 50, " + (0.7 * u) + ")";
+      ctx.fillRect(d.x, d.y, d.r, d.r);
+    });
+    fx.particles.forEach(function (p) {
+      const u = 1 - p.t / p.life;
+      ctx.fillStyle = p.color || "#ffd27a";
+      ctx.globalAlpha = Math.max(0, u);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    fx.shocks.forEach(function (s) {
+      const u = s.t / s.life;
+      if (s.core) {
+        ctx.beginPath();
+        ctx.fillStyle = "rgba(255, 230, 160, " + (0.55 * (1 - u)) + ")";
+        ctx.arc(s.x, s.y, s.r * (0.4 + u * 0.8), 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+      for (let r = 1; r <= s.rings; r++) {
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(255, 255, 255, " + (0.55 * (1 - u) / r) + ")";
+        ctx.lineWidth = 3 / r;
+        ctx.arc(s.x, s.y, s.r * (0.35 + u * (0.9 + r * 0.25)), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    });
+    fx.floaters.forEach(function (f) {
+      const u = 1 - f.t / f.life;
+      ctx.globalAlpha = Math.max(0, u);
+      ctx.fillStyle = f.color;
+      ctx.font = "bold " + (14 * (f.scale || 1)) + "px 'Avenir Next', 'Trebuchet MS', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.globalAlpha = 1;
+    });
+    fx.taunts.forEach(function (t) {
+      if (!world) return;
+      const tank = world[t.side];
+      if (!tank) return;
+      const u = t.t < 0.15 ? t.t / 0.15 : (t.t > t.life - 0.3 ? (t.life - t.t) / 0.3 : 1);
+      const x = tank.x;
+      const y = tank.y - 40;
+      ctx.globalAlpha = Math.max(0, u);
+      ctx.font = "12px 'Avenir Next', 'Trebuchet MS', sans-serif";
+      const tw = Math.min(220, ctx.measureText(t.text).width + 16);
+      ctx.fillStyle = "rgba(12, 8, 22, 0.85)";
+      ctx.beginPath();
+      ctx.roundRect(x - tw / 2, y - 22, tw, 22, 6);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y);
+      ctx.lineTo(x + 5, y);
+      ctx.lineTo(x, y + 7);
+      ctx.fill();
+      ctx.fillStyle = "#f0ecff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(t.text, x, y - 11);
+      ctx.globalAlpha = 1;
+    });
+    if (fx.banner) {
+      const t = fx.banner.t;
+      const u = Math.min(1, t / 0.35);
+      const scale = 0.8 + u * 0.25 + Math.sin(t * 3) * 0.02;
+      ctx.save();
+      ctx.translate(W / 2, 90);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = Math.min(1, t / 0.2);
+      ctx.fillStyle = "rgba(8, 6, 18, 0.72)";
+      ctx.beginPath();
+      ctx.roundRect(-180, -28, 360, 56, 16);
+      ctx.fill();
+      ctx.fillStyle = "#f6f0ff";
+      ctx.font = "bold 28px 'Avenir Next', 'Trebuchet MS', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.letterSpacing = "0.18em";
+      ctx.fillText(fx.banner.text, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      r = Math.min(r, w / 2, h / 2);
+      this.moveTo(x + r, y);
+      this.arcTo(x + w, y, x + w, y + h, r);
+      this.arcTo(x + w, y + h, x, y + h, r);
+      this.arcTo(x, y + h, x, y, r);
+      this.arcTo(x, y, x + w, y, r);
+      this.closePath();
+      return this;
+    };
+  }
+
+  // —— Live Arena ————————————————————————————————————————————————
+  let arenaMode = "local";
+  let liveMatchId = null;
+  let liveEs = null;
+  let lobbyEs = null;
+  let liveTurnsSeen = {};
+  let liveTurnsAnimated = {};
+  let replayQueue = [];
+  let replayPlaying = false;
+  let liveSeat = null;
+  let liveServerState = null;
+  let pendingFinished = null;
+  const SEAT_STORAGE_KEY = "bottanksLiveSeat";
+  const served = location.protocol === "http:" || location.protocol === "https:";
+  const API = served ? location.origin : "http://127.0.0.1:8787";
+
+  function setArenaMode(next) {
+    arenaMode = next;
+    document.body.classList.toggle("live-mode", next === "live");
+    document.body.classList.toggle("local-mode", next === "local");
+    document.getElementById("btnModeLocal").classList.toggle("on", next === "local");
+    document.getElementById("btnModeLive").classList.toggle("on", next === "live");
+    if (next === "live") {
+      playing = true;
+      btnPause.textContent = "Pause";
+      connectLobby();
+      refreshLobby();
+      liveStatus.textContent = "Arena " + API;
+      restoreLiveSeat();
+      updateLiveTelemetry();
+    } else {
+      disconnectLive();
+      if (!world) newMatch();
+    }
+    updateFireEnabled();
+  }
+
+  function disconnectLive() {
+    if (liveEs) { liveEs.close(); liveEs = null; }
+    if (lobbyEs) { lobbyEs.close(); lobbyEs = null; }
+    liveMatchId = null;
+  }
+
+  async function api(path, opts) {
+    const res = await fetch(API + path, opts);
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
+    if (!res.ok) throw Object.assign(new Error((data && data.error) || res.statusText), { status: res.status, data: data });
+    return data;
+  }
+
+  function playerNames(sum) {
+    const L = sum.players && sum.players.left ? sum.players.left.name : "—";
+    const R = sum.players && sum.players.right ? sum.players.right.name : "—";
+    return L + " vs " + R;
+  }
+
+  function renderLobby(list) {
+    lobbyEl.innerHTML = "";
+    if (!list || !list.length) {
+      lobbyEl.innerHTML = "<div class='hint'>No matches yet. An agent can join at " + API + " or fill a seat with a built-in bot.</div>";
+      return;
+    }
+    list.forEach(function (m) {
+      const row = document.createElement("div");
+      row.className = "lobby-row" + (m.matchId === liveMatchId ? " on" : "");
+      row.innerHTML =
+        "<span>" + m.matchId + "</span>" +
+        "<span class='pill " + m.status + "'>" + m.status + "</span>" +
+        "<span>" + playerNames(m) + "</span>" +
+        "<span>t" + (m.turnCount || 0) + "  HP " + Math.round((m.hp && m.hp.left) || 0) + "/" + Math.round((m.hp && m.hp.right) || 0) + "</span>";
+      const btn = document.createElement("button");
+      btn.className = "act ghost";
+      btn.textContent = m.status === "finished" ? "Replay" : "Watch";
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        openLiveMatch(m.matchId, m.status === "finished");
+      });
+      row.appendChild(btn);
+      row.addEventListener("click", function () { openLiveMatch(m.matchId, m.status === "finished"); });
+      lobbyEl.appendChild(row);
+    });
+  }
+
+  async function refreshLobby() {
+    try {
+      const data = await api("/api/matches");
+      renderLobby(data.matches || []);
+    } catch (err) {
+      lobbyEl.innerHTML = "<div class='err'>Cannot reach the arena at " + API + " — " + err.message + "</div>";
+    }
+  }
+
+  function connectLobby() {
+    if (lobbyEs) lobbyEs.close();
+    try {
+      lobbyEs = new EventSource(API + "/api/stream");
+      function bump() { refreshLobby(); }
+      ["snapshot", "match_created", "player_joined", "turn", "finished"].forEach(function (ev) {
+        lobbyEs.addEventListener(ev, bump);
+      });
+      lobbyEs.onerror = function () { /* keep trying */ };
+    } catch (e) { /* EventSource missing */ }
+  }
+
+  function liveQueueBusy() {
+    return mode === "flying" || replayQueue.length > 0;
+  }
+
+  function applyServerState(state, resetAnim) {
+    if (!state) return;
+    if (resetAnim && liveQueueBusy()) return;
+    const terrain = state.terrain
+      ? state.terrain.slice()
+      : (world && world.terrain ? world.terrain.slice() : E.generateTerrain(W, H, E.createRng(state.seed || 1)));
+    const skipOver = !resetAnim && liveQueueBusy();
+    world = {
+      seed: state.seed,
+      width: (state.field && state.field.width) || W,
+      height: (state.field && state.field.height) || H,
+      terrain: terrain,
+      gravity: state.gravity,
+      wind: state.wind,
+      left: Object.assign({ maxHp: 100, side: "left" }, state.players && state.players.left || { x: 80, y: 300, hp: 100, maxHp: 100 }),
+      right: Object.assign({ maxHp: 100, side: "right" }, state.players && state.players.right || { x: 880, y: 300, hp: 100, maxHp: 100 }),
+      turn: state.turnNumber,
+      side: state.whoseTurn || "left",
+      time: state.turnCount || 0,
+      history: world && world.history ? world.history : [],
+      winner: skipOver ? (world && world.winner) : state.winner,
+      over: skipOver ? false : (!!state.over || state.status === "finished")
+    };
+    if (!world.left.maxHp) world.left.maxHp = 100;
+    if (!world.right.maxHp) world.right.maxHp = 100;
+    if (!skipOver) {
+      if (world.left.hp <= 0) fx.wreck.left = true;
+      if (world.right.hp <= 0) fx.wreck.right = true;
+    }
+    if (resetAnim) {
+      flight = null;
+      mode = world.over ? "gameover" : "waiting";
+    }
+    updateMeta();
+    updateLiveTelemetry();
+  }
+
+  function rebuildLedger(turns) {
+    ledgerEl.innerHTML = "";
+    liveTurnsSeen = {};
+    (turns || []).forEach(function (t) { appendLedger(t, t.agentName); });
+  }
+
+  function appendLedger(turn, name) {
+    if (!turn || turn.turnNumber == null) return;
+    const key = turn.turnNumber + ":" + turn.side;
+    if (liveTurnsSeen[key]) return;
+    liveTurnsSeen[key] = true;
+    const row = document.createElement("div");
+    row.className = "ledger-row " + (turn.side || "");
+    const dmg = turn.side === "left" ? (turn.damageToRight || 0) : (turn.damageToLeft || 0);
+    const self = turn.side === "left" ? (turn.damageToLeft || 0) : (turn.damageToRight || 0);
+    const hp = turn.hpAfter ? Math.round(turn.hpAfter.left) + " — " + Math.round(turn.hpAfter.right) : "";
+    row.innerHTML =
+      "<strong>Turn " + turn.turnNumber + "</strong>  " + (name || turn.agentName || turn.side) +
+      "  ·  " + (turn.weapon || "shell") +
+      "  ·  " + Math.round(turn.angle || 0) + "°  @  " + Math.round(turn.power || 0) +
+      "<div class='meta'>wind " + (turn.windBefore != null ? turn.windBefore.toFixed(0) : "—") +
+      "  ·  dmg " + Math.round(dmg) + (self > 0.5 ? "  (self " + Math.round(self) + ")" : "") +
+      (turn.hit ? "  ·  HIT" : turn.skipped ? "  ·  skipped" : "  ·  miss") +
+      "  ·  HP " + hp + "</div>" +
+      (turn.taunt ? "<div class='taunt'>“" + String(turn.taunt).replace(/</g, "") + "”</div>" : "");
+    ledgerEl.appendChild(row);
+    ledgerEl.scrollTop = ledgerEl.scrollHeight;
+  }
+
+  function turnKey(turn) {
+    if (!turn) return "";
+    return String(turn.turnNumber) + ":" + (turn.side || "");
+  }
+
+  function handleLiveTurn(turn, state, animate) {
+    if (!turn) return;
+    const key = turnKey(turn);
+    appendLedger(turn, turn.agentName);
+    if (liveTurnsAnimated[key] === true) return;
+    if (!animate) {
+      liveTurnsAnimated[key] = true;
+      if (state && !liveQueueBusy()) applyServerState(state, true);
+      return;
+    }
+    if (mode === "flying") {
+      if (liveTurnsAnimated[key] === "queued") return;
+      liveTurnsAnimated[key] = "queued";
+      replayQueue.push({ turn: turn, state: state, key: key });
+      return;
+    }
+    liveTurnsAnimated[key] = true;
+    if (world && world.over) world.over = false;
+    beginShot(
+      { angle: turn.angle, power: turn.power, weapon: turn.weapon },
+      {},
+      { turn: turn, applyState: state, live: true, taunt: turn.taunt, side: turn.side }
+    );
+  }
+
+  function revealMatchOver(data) {
+    pendingFinished = null;
+    const state = data && data.state;
+    if (state) {
+      liveServerState = state;
+      applyServerState(state, true);
+    } else if (world) {
+      world.over = true;
+      mode = "gameover";
+    }
+    if (world && world.over && !fx.banner) {
+      const label = world.winner === "draw" ? "DRAW" : ((world.winner || "").toUpperCase() + " WINS");
+      fx.banner = { text: label, t: 0 };
+      setToast(world.winner === "draw" ? "Draw" : ((world.winner === "left" ? "Left" : "Right") + " tank wins"));
+    }
+    const id = (data && data.matchId) || liveMatchId || "";
+    const winner = (state && state.winner) || (world && world.winner) || "n/a";
+    liveStatus.textContent = "Finished " + id + "  ·  winner " + winner;
+    updateLiveTelemetry();
+  }
+
+  function maybeStartReplayNext() {
+    if (mode === "flying") return;
+    if (!replayQueue.length) {
+      if (replayPlaying && replayTurns && replayIndex < replayTurns.length) {
+        const t = replayTurns[replayIndex++];
+        handleLiveTurn(t, null, true);
+        return;
+      }
+      if (pendingFinished) revealMatchOver(pendingFinished);
+      return;
+    }
+    const item = replayQueue.shift();
+    if (item.key && liveTurnsAnimated[item.key] === true) {
+      maybeStartReplayNext();
+      return;
+    }
+    handleLiveTurn(item.turn, item.state, true);
+  }
+
+  function applyTurnResults(turn) {
+    if (!world || !turn) return;
+    if (turn.craters) {
+      turn.craters.forEach(function (c) {
+        if (c.kind === "trench" && E.carveTrench) E.carveTrench(world.terrain, c.x, c.depth || 3.2, c.radius || 4);
+        else E.carveCrater(world.terrain, c.x, c.y, c.radius);
+      });
+    }
+    if (turn.hpAfter) {
+      world.left.hp = turn.hpAfter.left;
+      world.right.hp = turn.hpAfter.right;
+    }
+    if (turn.posAfter) {
+      world.left.x = turn.posAfter.left.x;
+      world.left.y = turn.posAfter.left.y;
+      world.right.x = turn.posAfter.right.x;
+      world.right.y = turn.posAfter.right.y;
+    }
+    if (turn.windAfter != null) world.wind = turn.windAfter;
+    if (turn.winnerAfter) {
+      world.winner = turn.winnerAfter;
+      world.over = true;
+    } else {
+      world.turn = (turn.turnNumber || world.turn) + 1;
+      world.side = turn.side === "left" ? "right" : "left";
+    }
+    updateMeta();
+  }
+
+  let replayTurns = null;
+  let replayIndex = 0;
+
+  async function openLiveMatch(id, asReplay) {
+    liveMatchId = id;
+    liveTurnsSeen = {};
+    liveTurnsAnimated = {};
+    replayQueue = [];
+    replayTurns = null;
+    replayIndex = 0;
+    replayPlaying = false;
+    pendingFinished = null;
+    resetFx();
+    flight = null;
+    mode = "waiting";
+    if (liveEs) { liveEs.close(); liveEs = null; }
+    liveStatus.textContent = (asReplay ? "Replay " : "Watching ") + id;
+    refreshLobby();
+    try {
+      if (asReplay) {
+        const log = await api("/api/matches/" + encodeURIComponent(id) + "/log");
+        const init = log.initial;
+        world = {
+          seed: log.seed,
+          width: C.WIDTH,
+          height: C.HEIGHT,
+          terrain: init.terrain.slice(),
+          gravity: init.gravity,
+          wind: init.wind,
+          left: Object.assign({ maxHp: 100, side: "left" }, init.left),
+          right: Object.assign({ maxHp: 100, side: "right" }, init.right),
+          turn: 1,
+          side: "left",
+          time: 0,
+          history: [],
+          winner: null,
+          over: false
+        };
+        rebuildLedger([]);
+        replayTurns = (log.turns || []).slice();
+        replayIndex = 0;
+        replayPlaying = true;
+        mode = "waiting";
+        playing = true;
+        maybeStartReplayNext();
+        updateMeta();
+        return;
+      }
+      const log = await api("/api/matches/" + encodeURIComponent(id) + "/log");
+      const state = await api("/api/matches/" + encodeURIComponent(id) + "/state");
+      liveServerState = state;
+      updateLiveTelemetry();
+      const turns = (log && log.turns) || [];
+      const init = log && log.initial;
+      if (init && turns.length) {
+        world = {
+          seed: log.seed,
+          width: C.WIDTH,
+          height: C.HEIGHT,
+          terrain: init.terrain.slice(),
+          gravity: init.gravity,
+          wind: init.wind,
+          left: Object.assign({ maxHp: 100, side: "left" }, init.left),
+          right: Object.assign({ maxHp: 100, side: "right" }, init.right),
+          turn: 1,
+          side: "left",
+          time: 0,
+          history: [],
+          winner: null,
+          over: false
+        };
+        rebuildLedger([]);
+        liveTurnsAnimated = {};
+        playing = true;
+        mode = "waiting";
+        turns.forEach(function (t) { handleLiveTurn(t, null, true); });
+        if (state && (state.over || state.status === "finished")) {
+          pendingFinished = { matchId: id, state: state };
+          if (!liveQueueBusy()) revealMatchOver(pendingFinished);
+        }
+        updateMeta();
+      } else {
+        applyServerState(state, true);
+        rebuildLedger(turns);
+      }
+      liveEs = new EventSource(API + "/api/matches/" + encodeURIComponent(id) + "/stream");
+      liveEs.addEventListener("snapshot", function (ev) {
+        const data = JSON.parse(ev.data);
+        if (data.state) {
+          liveServerState = data.state;
+          updateLiveTelemetry();
+        }
+        if (liveQueueBusy()) return;
+        if (data.state) applyServerState(data.state, mode !== "flying");
+        if (data.turns && !Object.keys(liveTurnsSeen).length) rebuildLedger(data.turns);
+      });
+      liveEs.addEventListener("turn", function (ev) {
+        const data = JSON.parse(ev.data);
+        if (data.state) {
+          liveServerState = data.state;
+          updateLiveTelemetry();
+        }
+        handleLiveTurn(data.turn, data.state, true);
+      });
+      liveEs.addEventListener("finished", function (ev) {
+        const data = JSON.parse(ev.data);
+        if (data.state) {
+          liveServerState = data.state;
+          updateLiveTelemetry();
+        }
+        pendingFinished = { matchId: id, state: data.state, summary: data.summary };
+        if (liveQueueBusy()) {
+          liveStatus.textContent = "Finished " + id + " — animating remaining shots…";
+        } else {
+          revealMatchOver(pendingFinished);
+        }
+      });
+      liveEs.addEventListener("player_joined", function (ev) {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.state) {
+            liveServerState = data.state;
+            updateLiveTelemetry();
+            if (!liveQueueBusy()) applyServerState(data.state, mode !== "flying");
+          }
+        } catch (e) { /* ignore */ }
+        refreshLobby();
+      });
+    } catch (err) {
+      liveStatus.textContent = "Failed to open " + id + " — " + err.message;
+    }
+  }
+
+  function fmtNum(n, d) {
+    if (n == null || !isFinite(n)) return "n/a";
+    return Number(n).toFixed(d == null ? 1 : d);
+  }
+
+  function windTelemetry(w) {
+    if (w == null || !isFinite(w)) return "n/a";
+    const signed = (w > 0 ? "+" : "") + fmtNum(w, 1);
+    if (Math.abs(w) < 0.05) return signed + " (still)";
+    return signed + (w < 0 ? " (west / left ←)" : " (east / right →)");
+  }
+
+  function lastShotTelemetry(turn) {
+    if (!turn) return "none yet";
+    const dmg = turn.side === "left" ? (turn.damageToRight || 0) : (turn.damageToLeft || 0);
+    const hp = turn.hpAfter
+      ? "HP " + fmtNum(turn.hpAfter.left, 1) + " — " + fmtNum(turn.hpAfter.right, 1)
+      : "";
+    return (
+      "Turn " + turn.turnNumber + " " + (turn.agentName || turn.side) +
+      "  " + (turn.weapon || "shell") +
+      "  " + fmtNum(turn.angle, 1) + "° @ " + fmtNum(turn.power, 1) +
+      "  wind " + (turn.windBefore != null ? fmtNum(turn.windBefore, 1) : "n/a") +
+      (turn.hit ? "  HIT" : turn.skipped ? "  skipped" : "  miss") +
+      "  dmg " + fmtNum(dmg, 1) +
+      (hp ? "  " + hp : "") +
+      (turn.taunt ? "  taunt: " + String(turn.taunt) : "")
+    );
+  }
+
+  function readLiveSeat() {
+    try {
+      const raw = sessionStorage.getItem(SEAT_STORAGE_KEY);
+      if (!raw) return null;
+      const seat = JSON.parse(raw);
+      if (seat && seat.matchId && seat.side && seat.token) return seat;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  function saveLiveSeat(seat) {
+    liveSeat = seat;
+    try {
+      if (seat) sessionStorage.setItem(SEAT_STORAGE_KEY, JSON.stringify(seat));
+      else sessionStorage.removeItem(SEAT_STORAGE_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  function restoreLiveSeat() {
+    const seat = readLiveSeat();
+    if (!seat) {
+      updateLiveTelemetry();
+      return;
+    }
+    liveSeat = seat;
+    const nameEl = document.getElementById("livePlayerName");
+    const idEl = document.getElementById("liveJoinMatchId");
+    if (nameEl && seat.name) nameEl.value = seat.name;
+    if (idEl) idEl.value = seat.matchId;
+    setLiveAimDefaults(seat.side);
+    if (seat.matchId && liveMatchId !== seat.matchId) openLiveMatch(seat.matchId, false);
+    updateLiveTelemetry();
+  }
+
+  function setLiveAimDefaults(side) {
+    const angle = side === "right" ? 130 : 50;
+    const power = 70;
+    const aNum = document.getElementById("liveAngleNum");
+    const aRange = document.getElementById("liveAngle");
+    const aLab = document.getElementById("liveAngleV");
+    const pNum = document.getElementById("livePowerNum");
+    const pRange = document.getElementById("livePower");
+    const pLab = document.getElementById("livePowerV");
+    if (aNum) aNum.value = angle;
+    if (aRange) aRange.value = angle;
+    if (aLab) aLab.textContent = angle + "°";
+    if (pNum) pNum.value = power;
+    if (pRange) pRange.value = power;
+    if (pLab) pLab.textContent = String(power);
+  }
+
+  function bindLinkedInputs(numId, rangeId, labelId, suffix) {
+    const num = document.getElementById(numId);
+    const range = document.getElementById(rangeId);
+    const lab = document.getElementById(labelId);
+    if (!num || !range) return;
+    function sync(from) {
+      let v = Number(from.value);
+      if (!isFinite(v)) v = Number(range.min) || 0;
+      const lo = Number(range.min);
+      const hi = Number(range.max);
+      if (isFinite(lo) && v < lo) v = lo;
+      if (isFinite(hi) && v > hi) v = hi;
+      num.value = v;
+      range.value = v;
+      if (lab) lab.textContent = suffix ? v + suffix : String(v);
+    }
+    num.addEventListener("input", function () { sync(num); });
+    range.addEventListener("input", function () { sync(range); });
+  }
+
+  function isMyTurn() {
+    if (!liveSeat || !liveServerState) return false;
+    if (liveServerState.matchId && liveServerState.matchId !== liveSeat.matchId) return false;
+    return liveServerState.status === "active" && liveServerState.whoseTurn === liveSeat.side && !liveServerState.over;
+  }
+
+  function updateLiveFireEnabled() {
+    const btn = document.getElementById("btnLiveFire");
+    if (btn) btn.disabled = !isMyTurn();
+  }
+
+  function updateLiveTelemetry() {
+    const el = document.getElementById("liveTelemetry");
+    if (!el) return;
+    const st = liveServerState;
+    const seat = liveSeat;
+    if (!st && !seat) {
+      el.textContent = "Not seated. Enter a name and click Join Live Match. Leave Match ID blank to join a waiting lobby or open a new one.";
+      updateLiveFireEnabled();
+      return;
+    }
+    const status = st ? st.status : "unknown";
+    let turnStatus = "SPECTATING";
+    if (st && (st.over || status === "finished")) turnStatus = "MATCH OVER";
+    else if (seat && st && status === "active" && st.whoseTurn === seat.side) turnStatus = "YOUR TURN";
+    else if (seat && st && status === "waiting") turnStatus = "WAITING FOR OPPONENT";
+    else if (seat && st && status === "active") turnStatus = "WAITING FOR OPPONENT";
+    else if (seat && !st) turnStatus = "WAITING FOR OPPONENT";
+    const sideHint = seat
+      ? (seat.side === "right"
+        ? "right (shoots left, aim 95°–175°)"
+        : "left (shoots right, aim 5°–85°)")
+      : "not seated (spectator)";
+    const left = st && st.players && st.players.left;
+    const right = st && st.players && st.players.right;
+    const last = st && st.lastTurn;
+    const lines = [
+      "Match ID: " + ((st && st.matchId) || (seat && seat.matchId) || liveMatchId || "n/a"),
+      "Status: " + (status || "n/a"),
+      "Your Side: " + sideHint + (seat && seat.name ? "  as " + seat.name : ""),
+      "Turn Status: " + turnStatus,
+      "Wind: " + windTelemetry(st ? st.wind : null),
+      "Gravity: " + (st && st.gravity != null ? fmtNum(st.gravity, 1) : "n/a"),
+      "Left tank: " + (left
+        ? (left.name ? left.name + "  " : "") + "(x: " + fmtNum(left.x, 2) + ", y: " + fmtNum(left.y, 2) + ")  HP " + fmtNum(left.hp, 1) + "/" + fmtNum(left.maxHp || 100, 0)
+        : "empty"),
+      "Right tank: " + (right
+        ? (right.name ? right.name + "  " : "") + "(x: " + fmtNum(right.x, 2) + ", y: " + fmtNum(right.y, 2) + ")  HP " + fmtNum(right.hp, 1) + "/" + fmtNum(right.maxHp || 100, 0)
+        : "empty"),
+      "Last Shot: " + lastShotTelemetry(last)
+    ];
+    el.textContent = lines.join("\n");
+    updateLiveFireEnabled();
+  }
+
+  async function joinLiveMatch() {
+    const nameEl = document.getElementById("livePlayerName");
+    const idEl = document.getElementById("liveJoinMatchId");
+    const name = ((nameEl && nameEl.value) || "").trim().slice(0, 40) || "BrowserAgent";
+    if (nameEl) nameEl.value = name;
+    const matchId = ((idEl && idEl.value) || "").trim();
+    const body = { name: name };
+    if (matchId) body.matchId = matchId;
+    const seedEl = document.getElementById("liveSeed");
+    if (!matchId && seedEl && seedEl.value !== "") {
+      const seed = Number(seedEl.value);
+      if (isFinite(seed)) body.seed = seed;
+    }
+    try {
+      const data = await api("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      saveLiveSeat({ matchId: data.matchId, side: data.side, token: data.token, name: name });
+      liveServerState = data.state || null;
+      if (idEl) idEl.value = data.matchId;
+      setLiveAimDefaults(data.side);
+      liveStatus.textContent = "Seated as " + data.side + " in " + data.matchId + (data.status === "waiting" ? " — waiting for an opponent." : " — match active.");
+      updateLiveTelemetry();
+      openLiveMatch(data.matchId, false);
+      refreshLobby();
+    } catch (err) {
+      liveStatus.textContent = "Join failed: " + err.message;
+    }
+  }
+
+  async function fireLiveShot() {
+    if (!isMyTurn()) {
+      updateLiveFireEnabled();
+      return;
+    }
+    const angle = Number(document.getElementById("liveAngleNum").value);
+    const power = Number(document.getElementById("livePowerNum").value);
+    const weapon = document.getElementById("liveWeapon").value || "shell";
+    const taunt = (document.getElementById("liveTaunt").value || "").trim();
+    const body = {
+      token: liveSeat.token,
+      angle: angle,
+      power: power,
+      weapon: weapon
+    };
+    if (taunt) body.taunt = taunt;
+    try {
+      document.getElementById("btnLiveFire").disabled = true;
+      const data = await api("/api/matches/" + encodeURIComponent(liveSeat.matchId) + "/fire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (data.state) liveServerState = data.state;
+      updateLiveTelemetry();
+    } catch (err) {
+      liveStatus.textContent = "Fire failed: " + err.message;
+      updateLiveFireEnabled();
+    }
+  }
+
+  function leaveSeat() {
+    saveLiveSeat(null);
+    const idEl = document.getElementById("liveJoinMatchId");
+    if (idEl) idEl.value = "";
+    updateLiveTelemetry();
+    liveStatus.textContent = "Left seat. Join a fresh match when ready. You can still watch the current arena.";
+  }
+
+  bindLinkedInputs("liveAngleNum", "liveAngle", "liveAngleV", "°");
+  bindLinkedInputs("livePowerNum", "livePower", "livePowerV", "");
+  document.getElementById("btnJoinLive").addEventListener("click", joinLiveMatch);
+  document.getElementById("btnLiveFire").addEventListener("click", fireLiveShot);
+  document.getElementById("btnLeaveSeat").addEventListener("click", leaveSeat);
+
+  document.getElementById("btnModeLocal").addEventListener("click", function () { setArenaMode("local"); });
+  document.getElementById("btnModeLive").addEventListener("click", function () { setArenaMode("live"); });
+  document.getElementById("btnLobbyRefresh").addEventListener("click", refreshLobby);
+  document.getElementById("btnAddSolver").addEventListener("click", async function () {
+    if (!liveMatchId) {
+      liveStatus.textContent = "Open a waiting match first, or create one below.";
+      return;
+    }
+    try {
+      await api("/api/matches/" + encodeURIComponent(liveMatchId) + "/add-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bot: document.getElementById("addBotKind").value || "solver" })
+      });
+      refreshLobby();
+    } catch (err) {
+      liveStatus.textContent = err.message;
+    }
+  });
+  document.getElementById("btnCreateWatch").addEventListener("click", async function () {
+    try {
+      const data = await api("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "SpectatorSeat", seed: Number(document.getElementById("liveSeed").value) || undefined })
+      });
+      // We accidentally occupied a seat. That's messy for a spectator create.
+      // Better: just tell the user to use add-bot after an agent joins.
+      liveStatus.textContent = "Opened " + data.matchId + " as " + data.side + ". Token is only in the network response — prefer agent-cli to join. Watching.";
+      openLiveMatch(data.matchId, false);
+    } catch (err) {
+      liveStatus.textContent = err.message;
+    }
+  });
+  document.getElementById("btnReplayPlay").addEventListener("click", function () {
+    if (replayTurns) { replayPlaying = true; playing = true; maybeStartReplayNext(); }
+  });
+  document.getElementById("btnReplayStep").addEventListener("click", function () {
+    replayPlaying = false;
+    if (mode === "flying") return;
+    if (replayTurns && replayIndex < replayTurns.length) {
+      const t = replayTurns[replayIndex++];
+      handleLiveTurn(t, null, true);
+    }
+  });
+  document.getElementById("btnReplayReset").addEventListener("click", function () {
+    if (liveMatchId) openLiveMatch(liveMatchId, true);
+  });
+
+  // —— frame loop ———————————————————————————————————————————————
+  let lastTs = 0;
+  function frame(ts) {
+    const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0.016;
+    lastTs = ts;
+    if (mode === "flying" && flight && playing) {
+      flight.t += dt;
+      if (flight.t >= flight.duration) finishFlight();
+    } else if (playing) {
+      requestBotOrWait(dt);
+      if (arenaMode === "live") maybeStartReplayNext();
+    }
+    stepFx(dt);
+
+    ctx.save();
+    if (fx.shake > 0.2) {
+      ctx.translate((Math.random() - 0.5) * fx.shake, (Math.random() - 0.5) * fx.shake);
+    }
+    drawSky(world ? world.wind : 0, dt);
+    if (world) {
+      drawTerrain(world.terrain);
+      drawWind(world.wind);
+      let leftAng = 50, rightAng = 130;
+      if (world.history) {
+        for (let i = 0; i < world.history.length; i++) {
+          const rec = world.history[i];
+          if (rec.skipped) continue;
+          if (rec.side === "left") leftAng = rec.angle;
+          else rightAng = rec.angle;
+        }
+      }
+      if (lastRecord && lastRecord.side === "left" && !lastRecord.skipped) leftAng = lastRecord.angle;
+      if (lastRecord && lastRecord.side === "right" && !lastRecord.skipped) rightAng = lastRecord.angle;
+      if (arenaMode === "local") {
+        if (controllerKind("left") === "human") leftAng = aim.left.angle;
+        if (controllerKind("right") === "human") rightAng = aim.right.angle;
+        if (mode === "waiting" && controllerKind(world.side) === "human") {
+          if (world.side === "left") leftAng = aim.left.angle;
+          else rightAng = aim.right.angle;
+        }
+      }
+      drawTank(world.left, "#6be0ff", leftAng, "left");
+      drawTank(world.right, "#ffb45a", rightAng, "right");
+      drawPreview("left");
+      drawPreview("right");
+      drawFlight(dt);
+      drawFx();
+    } else {
+      drawTerrain(E.generateTerrain(W, H, E.createRng(3)));
+      drawFx();
+    }
+    ctx.restore();
+    requestAnimationFrame(frame);
+  }
+
+  syncPanels();
+  document.body.classList.add("local-mode");
+  newMatch();
+  requestAnimationFrame(frame);
+
+  if (served) {
+    fetch(API + "/api/health").then(function (r) {
+      if (r.ok) setArenaMode("live");
+    }).catch(function () { /* stay local */ });
+  }
+})();
+
+  </script>
+
+</body>
+</html>
