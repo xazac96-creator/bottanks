@@ -62,17 +62,70 @@
     },
   };
 
+  // Per-tank, per-match ammo caps. null = unlimited.
+  // Balance: a near-perfect Triple Shot deals ~52-54 and a Big Blast up to 44,
+  // so with triple x1 and blast x2 the best possible first two shots total
+  // at most 54 + 44 = 98 < 100 HP: no side can force a kill by its 2nd shot.
+  const AMMO_CAPS = Object.freeze({
+    shell: null,
+    blast: 2,
+    triple: 1,
+    roller: null,
+  });
+
+  const WEAPON_IDS = Object.freeze(["shell", "blast", "triple", "roller"]);
+
   const WEAPON_LIST = Object.freeze(
-    ["shell", "blast", "triple", "roller"].map(function (id) {
+    WEAPON_IDS.map(function (id) {
       const w = WEAPONS[id];
       return Object.freeze({
         id: w.id,
         name: w.name,
         blast: w.blast,
         damage: w.damage,
+        maxAmmo: AMMO_CAPS[id] == null ? null : AMMO_CAPS[id],
       });
     })
   );
+
+  function initialAmmo(caps) {
+    const src = caps && typeof caps === "object" ? caps : AMMO_CAPS;
+    const out = {};
+    for (let i = 0; i < WEAPON_IDS.length; i++) {
+      const id = WEAPON_IDS[i];
+      const v = Object.prototype.hasOwnProperty.call(src, id) ? src[id] : AMMO_CAPS[id];
+      out[id] = v == null || !isFinite(Number(v)) || Number(v) < 0 ? null : Math.floor(Number(v));
+    }
+    return out;
+  }
+
+  // true when `weapon` can be fired with this ammo table (missing table or
+  // null / negative count = unlimited)
+  function hasAmmo(ammo, weapon) {
+    if (!ammo || typeof ammo !== "object") return true;
+    const v = ammo[weapon];
+    if (v == null || v < 0) return true;
+    return v > 0;
+  }
+
+  function availableWeapons(ammo) {
+    return WEAPON_IDS.filter(function (id) {
+      return hasAmmo(ammo, id);
+    });
+  }
+
+  function copyAmmo(ammo) {
+    const out = {};
+    for (let i = 0; i < WEAPON_IDS.length; i++) {
+      const id = WEAPON_IDS[i];
+      out[id] = ammo && ammo[id] != null ? ammo[id] : null;
+    }
+    return out;
+  }
+
+  function normalizeSide(side) {
+    return side === "right" ? "right" : side === "left" ? "left" : null;
+  }
 
   const CONSTANTS = Object.freeze({
     WIDTH: WIDTH,
@@ -503,13 +556,16 @@
         hp: own.hp,
         maxHp: own.maxHp,
         side: side,
+        ammo: Object.freeze(copyAmmo(own.ammo)),
       }),
       opponent: Object.freeze({
         x: opp.x,
         y: opp.y,
         hp: opp.hp,
         maxHp: opp.maxHp,
+        ammo: Object.freeze(copyAmmo(opp.ammo)),
       }),
+      firstSide: world.firstSide || "left",
       wind: world.wind,
       gravity: world.gravity,
       weapons: WEAPON_LIST,
@@ -592,6 +648,10 @@
     );
     const leftY = flattenPlatform(terrain, leftX, 16);
     const rightY = flattenPlatform(terrain, rightX, 16);
+    // Who fires first. Not derived from the seed/rng (so terrain + wind stay
+    // identical), and callers like the live server pick it with crypto
+    // randomness. Default "left" keeps old deterministic sims unchanged.
+    const firstSide = normalizeSide(opts.firstSide) || "left";
     const world = {
       seed: seed,
       rng: rng,
@@ -606,6 +666,7 @@
         hp: TANK_HP,
         maxHp: TANK_HP,
         side: "left",
+        ammo: initialAmmo(opts.ammo),
       },
       right: {
         x: rightX,
@@ -613,9 +674,11 @@
         hp: TANK_HP,
         maxHp: TANK_HP,
         side: "right",
+        ammo: initialAmmo(opts.ammo),
       },
       turn: 1,
-      side: "left",
+      side: firstSide,
+      firstSide: firstSide,
       time: 0,
       history: [],
       winner: null, // 'left' | 'right' | 'draw'
@@ -632,6 +695,18 @@
     settleTank(world.left, terrain);
     settleTank(world.right, terrain);
     return world;
+  }
+
+  // Change who shoots first. Only allowed before any shot has been resolved.
+  function setFirstSide(world, side) {
+    const s = normalizeSide(side);
+    if (!s) throw new Error("firstSide must be 'left' or 'right'");
+    if (world.history && world.history.length) {
+      throw new Error("Cannot change firstSide after the first shot");
+    }
+    world.firstSide = s;
+    world.side = s;
+    return s;
   }
 
   function finishIfNeeded(world) {
@@ -690,6 +765,15 @@
     meta = meta || {};
     const side = world.side;
     const opp = side === "left" ? "right" : "left";
+    let ammoError = null;
+    let attemptedWeapon = null;
+    if (cmd && !hasAmmo(world[side].ammo, cmd.weapon)) {
+      // Out of ammo: the shot misfires (wasted turn). The live server rejects
+      // these with a 400 before they ever reach the engine.
+      attemptedWeapon = cmd.weapon;
+      ammoError = "Out of ammo: " + cmd.weapon;
+      cmd = null;
+    }
     const windBefore = world.wind;
     const hpBefore = { left: world.left.hp, right: world.right.hp };
     const posBefore = {
@@ -720,20 +804,23 @@
       craters: [],
       hit: false,
       skipped: !cmd,
-      error: meta.error || null,
+      error: meta.error || ammoError || null,
       timeout: !!meta.timeout,
       events: null,
       winnerAfter: null,
+      attemptedWeapon: attemptedWeapon,
+      ammoAfter: null,
     };
 
     if (meta.timeout) world.stats.timeouts[side]++;
-    else if (meta.error) world.stats.errors[side]++;
+    else if (meta.error || ammoError) world.stats.errors[side]++;
 
     if (!cmd) {
       record.posAfter = {
         left: { x: world.left.x, y: world.left.y },
         right: { x: world.right.x, y: world.right.y },
       };
+      record.ammoAfter = { left: copyAmmo(world.left.ammo), right: copyAmmo(world.right.ammo) };
       world.history.push(record);
       advanceTurn(world);
       record.windAfter = world.wind;
@@ -742,6 +829,9 @@
     }
 
     world.stats.shots[side]++;
+    const ammo = world[side].ammo;
+    if (ammo && ammo[cmd.weapon] != null && ammo[cmd.weapon] > 0) ammo[cmd.weapon] -= 1;
+    record.ammoAfter = { left: copyAmmo(world.left.ammo), right: copyAmmo(world.right.ammo) };
     const events = projectilesFor(world, side, cmd, meta.path !== false);
     const dmg = applyImpacts(world, events);
     record.events = events;
@@ -812,8 +902,8 @@
       const towardRight = state.opponent.x >= state.own.x;
       const angle = towardRight ? rng() * 90 : 90 + rng() * 90;
       const power = 25 + rng() * 75;
-      const ids = ["shell", "blast", "triple", "roller"];
-      const weapon = ids[Math.floor(rng() * ids.length)];
+      const ids = availableWeapons(state.own && state.own.ammo);
+      const weapon = ids.length ? ids[Math.floor(rng() * ids.length)] : "shell";
       return { angle: angle, power: power, weapon: weapon };
     };
   }
@@ -927,7 +1017,11 @@
       const towardRight = state.opponent.x >= state.own.x;
       const angleMin = towardRight ? 15 : 100;
       const angleMax = towardRight ? 80 : 165;
-      const weapons = ["shell", "blast"];
+      const ownAmmo = state.own && state.own.ammo;
+      const weapons = ["shell", "blast"].filter(function (id) {
+        return hasAmmo(ownAmmo, id);
+      });
+      const rollerOk = hasAmmo(ownAmmo, "roller");
 
       let best = {
         score: Infinity,
@@ -971,7 +1065,7 @@
       }
 
       // If we still miss, try a roller landed short of the enemy
-      if (best.score > state.weapons[0].blast + TANK_RADIUS) {
+      if (rollerOk && best.score > state.weapons[0].blast + TANK_RADIUS) {
         const rollerBest = { score: best.score, angle: best.angle, power: best.power };
         for (let a = angleMin; a <= angleMax; a += 6) {
           for (let p = 20; p <= 95; p += 8) {
@@ -1015,7 +1109,7 @@
       return {
         angle: clamp(Math.round(cmd.angle + gauss() * 2.5), 0, 180),
         power: clamp(Math.round(cmd.power + gauss() * 3), 0, 100),
-        weapon: cmd.weapon,
+        weapon: hasAmmo(state.own && state.own.ammo, cmd.weapon) ? cmd.weapon : "shell",
       };
     };
   }
@@ -1080,6 +1174,7 @@
       winner: world.winner,
       turns: world.turn,
       seed: world.seed,
+      firstSide: world.firstSide,
       shots: world.stats.shots,
       hits: world.stats.hits,
       errors: world.stats.errors,
@@ -1109,6 +1204,11 @@
       const res = simulateMatch(left, right, {
         seed: (seed + i * 997) >>> 0,
         timeLimitMs: opts.timeLimitMs,
+        ammo: opts.ammo,
+        firstSide:
+          opts.firstSide === "alternate"
+            ? i % 2 === 0 ? "left" : "right"
+            : opts.firstSide,
       });
       wins[res.winner]++;
       errors.left += res.errors.left;
@@ -1155,6 +1255,13 @@
     CONSTANTS: CONSTANTS,
     WEAPONS: WEAPONS,
     WEAPON_LIST: WEAPON_LIST,
+    WEAPON_IDS: WEAPON_IDS,
+    AMMO_CAPS: AMMO_CAPS,
+    initialAmmo: initialAmmo,
+    hasAmmo: hasAmmo,
+    availableWeapons: availableWeapons,
+    copyAmmo: copyAmmo,
+    setFirstSide: setFirstSide,
     BUILTIN_BOTS: BUILTIN_BOTS,
     createRng: mulberry32,
     generateTerrain: generateTerrain,

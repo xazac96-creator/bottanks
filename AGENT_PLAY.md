@@ -7,6 +7,23 @@ Angle is 0° due right, 90° straight up, 180° due left.
 Left tank typically aims 5°–85° (shoots right). Right tank typically aims 95°–175° (shoots left).  
 Power is 10–100. Weapons: `shell`, `blast`, `triple`, `roller`.
 
+## Balance rules: ammo caps and a random first shot
+
+**Ammo is capped per tank, per match:**
+
+| Weapon | Damage (max) | Ammo per match |
+| --- | --- | --- |
+| `shell` | 30 | unlimited |
+| `roller` | 34 | unlimited |
+| `blast` (Big Blast) | 44 | **2** |
+| `triple` (Triple Shot, 3 × 18) | ~54 | **1** |
+
+Remaining ammo is in the state: `players.left.ammo` / `players.right.ammo` (counts per weapon, `null` = unlimited) plus `players.<side>.availableWeapons`. Starting caps are in `ammoCaps`. Firing an exhausted weapon returns **HTTP 400** with `code: "out_of_ammo"`. Nothing is swapped, nothing is fired, and **your turn is not used**, so pick another weapon and fire again.
+
+Why: tanks have 100 HP and a near-perfect Triple Shot does ~52–54, so with unlimited triples whoever shot first won on turn 3 every time. With these caps the best any tank can do in its first two shots is 54 + 44 = 98, which is under 100.
+
+**Who fires first is random.** When the second seat fills (or a bot is added), the server flips a crypto-random coin. The result is in `firstSide` (also saved in the match log/JSON), and `whoseTurn` reflects it. The **right seat may open**, so always check `whoseTurn` and don't assume left goes first. `whoseTurn` is `null` while the match is still waiting for an opponent.
+
 ## Browser play (humans and browser-using ChatGPT agents)
 
 Open the Live Arena page at the server URL (locally http://127.0.0.1:8787).
@@ -14,8 +31,8 @@ Open the Live Arena page at the server URL (locally http://127.0.0.1:8787).
 1. Use the **Play Live in Browser** panel.
 2. Enter an **Agent/Player Name**. Optionally paste a **Match ID** (leave it blank to join a waiting lobby or open a new one).
 3. Click **Join Live Match**. Your seat (`left` or `right`) and turn token are stored in this browser tab.
-4. Read the plain-text **Match Telemetry** box above the controls. It lists Match ID, Status, Your Side, Turn Status (`YOUR TURN` / `WAITING FOR OPPONENT` / `MATCH OVER`), exact Wind and Gravity, both tanks' `(x, y)` and HP, and the Last Shot. Do not guess numbers off the canvas.
-5. Set **Angle**, **Power**, **Weapon**, and an optional **Taunt**, then click **Fire Shot** when telemetry says `YOUR TURN`.
+4. Read the plain-text **Match Telemetry** box above the controls. It lists Match ID, Status, Your Side, Turn Status (`YOUR TURN` / `WAITING FOR OPPONENT` / `MATCH OVER`), exact Wind and Gravity, both tanks' `(x, y)` and HP, First Shooter, each tank's remaining ammo, your available weapons, and the Last Shot. Do not guess numbers off the canvas.
+5. Set **Angle**, **Power**, **Weapon**, and an optional **Taunt**, then click **Fire Shot** when telemetry says `YOUR TURN`. Empty weapons are greyed out in the Weapon list.
 6. Click **Leave Seat** to clear this tab's session and join a fresh match.
 
 Spectator **Watch** / **Play replay** in the Lobby still work. Local mode (offline, built-in bots, series) is unchanged.
@@ -39,7 +56,7 @@ Actions mapped for you:
 - `getMatchLog` — `GET /api/matches/{id}/log`
 - `addBot` — `POST /api/matches/{id}/add-bot`  body: `{ "bot": "solver" }`
 
-Save `matchId`, `side`, and `token` from `joinMatch`. Then loop: wait until `status` is `active` and `whoseTurn` is you, then fire.
+Save `matchId`, `side`, and `token` from `joinMatch`. Then loop: wait until `status` is `active` and `whoseTurn` is you, then fire with a weapon that is still in `players.<side>.availableWeapons`.
 
 ## CLI (easiest on this computer)
 

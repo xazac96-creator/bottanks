@@ -161,8 +161,8 @@ function snapFromState(state, side) {
   return {
     terrain: state.terrain,
     field: state.field,
-    own: { x: own.x, y: own.y, hp: own.hp, maxHp: own.maxHp, side: side },
-    opponent: { x: opp.x, y: opp.y, hp: opp.hp, maxHp: opp.maxHp },
+    own: { x: own.x, y: own.y, hp: own.hp, maxHp: own.maxHp, side: side, ammo: own.ammo },
+    opponent: { x: opp.x, y: opp.y, hp: opp.hp, maxHp: opp.maxHp, ammo: opp.ammo },
     wind: state.wind,
     gravity: state.gravity,
     weapons: state.weapons,
@@ -171,6 +171,30 @@ function snapFromState(state, side) {
     turn: state.turnNumber,
     time: state.turnCount,
   };
+}
+
+// Re-simulate a saved match from its seed + firstSide + recorded shots and
+// check every turn's HP and ammo match the ledger.
+function replayMatches(saved) {
+  const world = engine.createWorld({ seed: saved.seed, firstSide: saved.firstSide || "left" });
+  for (let i = 0; i < saved.turns.length; i++) {
+    const t = saved.turns[i];
+    if (world.side !== t.side) return "turn " + t.turnNumber + " side " + world.side + " != " + t.side;
+    const rec = engine.resolveShot(world, t.skipped ? null : { angle: t.angle, power: t.power, weapon: t.weapon }, { path: false });
+    if (Math.abs(rec.hpAfter.left - t.hpAfter.left) > 1e-9 || Math.abs(rec.hpAfter.right - t.hpAfter.right) > 1e-9) {
+      return "turn " + t.turnNumber + " hp " + JSON.stringify(rec.hpAfter) + " != " + JSON.stringify(t.hpAfter);
+    }
+    if (t.ammoAfter && JSON.stringify(rec.ammoAfter) !== JSON.stringify(t.ammoAfter)) {
+      return "turn " + t.turnNumber + " ammo " + JSON.stringify(rec.ammoAfter) + " != " + JSON.stringify(t.ammoAfter);
+    }
+  }
+  if ((world.winner || null) !== (saved.winner || null)) return "winner " + world.winner + " != " + saved.winner;
+  return null;
+}
+
+// Harmless shot straight off the near edge (no damage) for the given side.
+function offscreen(side, weapon) {
+  return { angle: side === "left" ? 175 : 5, power: 100, weapon: weapon || "shell" };
 }
 
 async function main() {
@@ -314,6 +338,13 @@ async function main() {
       pass("second agent joins right / active", "opponent " + (b.data.opponent && b.data.opponent.name));
     } else fail("second agent joins right / active", JSON.stringify(b.data));
     const tokenB = b.data.token;
+    const firstSide = b.data.state && b.data.state.firstSide;
+    if ((firstSide === "left" || firstSide === "right") && b.data.state.whoseTurn === firstSide) {
+      pass("match start records random firstSide and whoseTurn", "firstSide=" + firstSide);
+    } else fail("match start records random firstSide and whoseTurn", JSON.stringify(b.data.state && { f: b.data.state.firstSide, w: b.data.state.whoseTurn }));
+    const openerSide = firstSide === "right" ? "right" : "left";
+    const waiterSide = openerSide === "left" ? "right" : "left";
+    const sideTokens = { left: tokenA, right: tokenB };
 
     const c = await request("POST", "/api/join", { name: "Charlie", matchId: matchId });
     if (c.status === 409 && /full/i.test(JSON.stringify(c.data))) {
@@ -326,22 +357,22 @@ async function main() {
     } else fail("third agent without matchId opens a new lobby", JSON.stringify(c2.data));
 
     const ot = await request("POST", "/api/matches/" + matchId + "/fire", {
-      token: tokenB, angle: 120, power: 60, weapon: "shell",
+      token: sideTokens[waiterSide], angle: waiterSide === "right" ? 120 : 60, power: 60, weapon: "shell",
     });
     if (ot.status === 409 && /not your turn/i.test(JSON.stringify(ot.data))) {
       pass("out-of-turn fire 409", "whoseTurn " + ot.data.whoseTurn);
     } else fail("out-of-turn fire 409", "status " + ot.status + " " + JSON.stringify(ot.data));
 
-    // Long-poll: Bravo waits, Alpha fires, wait returns Bravo's turn
-    const waitP = request("GET", "/api/matches/" + matchId + "/state?wait=1&side=right&timeout=25", null, 30000);
+    // Long-poll: the non-opener waits, the opener fires, wait returns the waiter's turn
+    const waitP = request("GET", "/api/matches/" + matchId + "/state?wait=1&side=" + waiterSide + "&timeout=25", null, 30000);
     await sleep(150);
     const fireA = await request("POST", "/api/matches/" + matchId + "/fire", {
-      token: tokenA, angle: 50, power: 70, weapon: "shell", taunt: "Opening salvo.",
+      token: sideTokens[openerSide], angle: openerSide === "left" ? 50 : 130, power: 70, weapon: "shell", taunt: "Opening salvo.",
     });
-    if (fireA.status !== 200) fail("alpha opening shot", JSON.stringify(fireA.data));
-    else pass("alpha opening shot", "turn " + fireA.data.turn.turnNumber + " weapon " + fireA.data.turn.weapon + " taunt " + fireA.data.turn.taunt);
+    if (fireA.status !== 200) fail("opening shot by firstSide", JSON.stringify(fireA.data));
+    else pass("opening shot by firstSide", openerSide + " turn " + fireA.data.turn.turnNumber + " weapon " + fireA.data.turn.weapon + " taunt " + fireA.data.turn.taunt);
     const waited = await waitP;
-    if (waited.status === 200 && (waited.data.whoseTurn === "right" || waited.data.over)) {
+    if (waited.status === 200 && (waited.data.whoseTurn === waiterSide || waited.data.over)) {
       pass("long-poll wait=1 returns on turn change", "whoseTurn " + waited.data.whoseTurn + " lastTurn side " + (waited.data.lastTurn && waited.data.lastTurn.side));
     } else fail("long-poll wait=1 returns on turn change", "status " + waited.status + " " + JSON.stringify(waited.data).slice(0, 300));
 
@@ -361,6 +392,10 @@ async function main() {
       const cmd = solvers[side](snapFromState(state, side));
       if (weapons.length) {
         cmd.weapon = weapons.shift();
+      }
+      if (!engine.hasAmmo(state.players[side].ammo, cmd.weapon)) {
+        fail("bot respects ammo in live duel", side + " chose empty " + cmd.weapon);
+        break;
       }
       usedWeapons[cmd.weapon] = (usedWeapons[cmd.weapon] || 0) + 1;
       const taunt = names[side] + " fires " + cmd.weapon + " #" + state.turnNumber;
@@ -431,9 +466,96 @@ async function main() {
     } else fail("SSE stream delivers snapshot and turn", JSON.stringify(kinds) + " n=" + sseEvents.length);
 
     const add = await request("POST", "/api/matches/" + c2.data.matchId + "/add-bot", { bot: "naive", name: "NaiveBot" });
-    if (add.status === 200 && add.data.side === "right") {
+    if (add.status === 200 && add.data.side === "right" && (add.data.state.firstSide === "left" || add.data.state.firstSide === "right")) {
       pass("POST add-bot fills second seat", "status " + add.data.status + " side " + add.data.side + " bot " + add.data.bot);
     } else fail("POST add-bot fills second seat", "status " + add.status + " " + JSON.stringify(add.data).slice(0, 300));
+
+
+    // ---- Balance: random first shooter ----
+    const firstCounts = { left: 0, right: 0 };
+    let fsBad = [];
+    for (let i = 0; i < 24; i++) {
+      const id = "m_fs_" + i;
+      const j1 = await request("POST", "/api/join", { name: "FsA" + i, matchId: id, seed: 100 + i });
+      const j2 = await request("POST", "/api/join", { name: "FsB" + i, matchId: id });
+      const st = j2.data && j2.data.state;
+      if (j1.status !== 201 || j1.data.state.whoseTurn !== null || j1.data.state.firstSide !== null) fsBad.push(id + " waiting state");
+      if (!st || (st.firstSide !== "left" && st.firstSide !== "right") || st.whoseTurn !== st.firstSide) {
+        fsBad.push(id + " " + JSON.stringify(st && { f: st.firstSide, w: st.whoseTurn }));
+        continue;
+      }
+      firstCounts[st.firstSide]++;
+    }
+    if (!fsBad.length && firstCounts.left >= 1 && firstCounts.right >= 1) {
+      pass("firstSide is random across matches and whoseTurn matches it", "24 matches: left first " + firstCounts.left + ", right first " + firstCounts.right);
+    } else fail("firstSide is random across matches and whoseTurn matches it", JSON.stringify(firstCounts) + " " + fsBad.join("; "));
+
+    const lastFs = await request("GET", "/api/matches/m_fs_0/log");
+    const savedFs = JSON.parse(fs.readFileSync(path.join(MATCH_DIR, "m_fs_0.json"), "utf8"));
+    if (lastFs.data.firstSide && savedFs.firstSide === lastFs.data.firstSide && savedFs.startedAt) {
+      pass("firstSide recorded in log and saved match JSON", "m_fs_0 firstSide=" + savedFs.firstSide);
+    } else fail("firstSide recorded in log and saved match JSON", JSON.stringify({ log: lastFs.data.firstSide, saved: savedFs.firstSide }));
+
+    // ---- Balance: ammo caps ----
+    const am1 = await request("POST", "/api/join", { name: "AmmoA", matchId: "m_ammo", seed: 31 });
+    const am2 = await request("POST", "/api/join", { name: "AmmoB", matchId: "m_ammo" });
+    const amTok = { left: am1.data.token, right: am2.data.token };
+    const amState0 = am2.data.state;
+    const op = amState0.whoseTurn;
+    const other = op === "left" ? "right" : "left";
+    const capsOk =
+      amState0.ammoCaps && amState0.ammoCaps.triple === 1 && amState0.ammoCaps.blast === 2 &&
+      amState0.ammoCaps.shell === null && amState0.ammoCaps.roller === null &&
+      amState0.players.left.ammo.triple === 1 && amState0.players.right.ammo.blast === 2;
+    if (capsOk) pass("state exposes ammoCaps and per-tank ammo", JSON.stringify(amState0.players.left.ammo));
+    else fail("state exposes ammoCaps and per-tank ammo", JSON.stringify({ caps: amState0.ammoCaps, l: amState0.players.left.ammo }));
+
+    async function amFire(side, weapon) {
+      return request("POST", "/api/matches/m_ammo/fire", Object.assign({ token: amTok[side] }, offscreen(side, weapon)));
+    }
+    const t1 = await amFire(op, "triple");
+    if (t1.status === 200 && t1.data.turn.weapon === "triple" && t1.data.turn.ammoAfter[op].triple === 0 &&
+        t1.data.state.players[op].ammo.triple === 0 && t1.data.state.players[op].availableWeapons.indexOf("triple") < 0 &&
+        t1.data.state.players[other].ammo.triple === 1) {
+      pass("triple shot decrements ammo (1 -> 0)", op + " ammo " + JSON.stringify(t1.data.state.players[op].ammo));
+    } else fail("triple shot decrements ammo (1 -> 0)", "status " + t1.status + " " + JSON.stringify(t1.data).slice(0, 300));
+    await amFire(other, "shell");
+    const countBefore = (await request("GET", "/api/matches/m_ammo/state?compact=1")).data.turnCount;
+    const t2 = await amFire(op, "triple");
+    const afterReject = (await request("GET", "/api/matches/m_ammo/state?compact=1")).data;
+    if (t2.status === 400 && t2.data.code === "out_of_ammo" && /out of ammo/i.test(t2.data.error) &&
+        t2.data.availableWeapons.indexOf("triple") < 0 && afterReject.turnCount === countBefore && afterReject.whoseTurn === op) {
+      pass("second triple shot rejected with 400 (turn kept, no swap)", t2.data.error);
+    } else fail("second triple shot rejected with 400 (turn kept, no swap)", "status " + t2.status + " " + JSON.stringify(t2.data) + " turnCount " + afterReject.turnCount + "/" + countBefore);
+    const b1 = await amFire(op, "blast");
+    await amFire(other, "shell");
+    const b2 = await amFire(op, "blast");
+    await amFire(other, "shell");
+    const b3 = await amFire(op, "blast");
+    if (b1.status === 200 && b2.status === 200 && b2.data.state.players[op].ammo.blast === 0 && b3.status === 400 && b3.data.code === "out_of_ammo") {
+      pass("big blast capped at 2 (third rejected 400)", b3.data.error);
+    } else fail("big blast capped at 2 (third rejected 400)", [b1.status, b2.status, b3.status].join(",") + " " + JSON.stringify(b3.data).slice(0, 200));
+    const sh = await amFire(op, "shell");
+    const ro = await amFire(other, "roller");
+    if (sh.status === 200 && ro.status === 200 && ro.data.state.players[op].ammo.shell === null && ro.data.state.players[other].ammo.roller === null) {
+      pass("shell and roller stay unlimited", "ok");
+    } else fail("shell and roller stay unlimited", sh.status + "," + ro.status);
+    const savedAmmo = JSON.parse(fs.readFileSync(path.join(MATCH_DIR, "m_ammo.json"), "utf8"));
+    const rpErr = replayMatches(savedAmmo);
+    const rpErr2 = replayMatches(JSON.parse(fs.readFileSync(savedPath, "utf8")));
+    if (!rpErr && !rpErr2 && savedAmmo.final.left.ammo && savedAmmo.firstSide === op) {
+      pass("saved matches replay exactly (seed + firstSide + shots)", "m_ammo turns=" + savedAmmo.turns.length + ", duel turns=" + log.data.turns.length);
+    } else fail("saved matches replay exactly (seed + firstSide + shots)", (rpErr || "") + " | " + (rpErr2 || ""));
+
+    const helpAmmo = await request("GET", "/api/help");
+    const specAmmo = JSON.stringify((await request("GET", "/openapi.json")).data);
+    if (helpAmmo.data.ammo && helpAmmo.data.ammo.caps.triple === 1 && /firstSide/.test(JSON.stringify(helpAmmo.data)) &&
+        /ammo/i.test(specAmmo) && /out_of_ammo/.test(specAmmo) && /firstSide/.test(specAmmo)) {
+      pass("help and OpenAPI document ammo + firstSide", "ok");
+    } else fail("help and OpenAPI document ammo + firstSide", "help.ammo=" + JSON.stringify(helpAmmo.data.ammo));
+    if (home.raw.indexOf("First Shooter") >= 0 && home.raw.indexOf("syncLiveWeaponSelect") >= 0 && /ammo/i.test(home.raw)) {
+      pass("browser UI shows ammo + first shooter in telemetry", "markers present");
+    } else fail("browser UI shows ammo + first shooter in telemetry", "missing markers");
 
     // agent-cli
     const cliMatches = await cli("matches");
@@ -454,6 +576,16 @@ async function main() {
       } else fail("agent-cli log", cliLog.out.slice(0, 200));
     } else fail("agent-cli join", (cliJoin.out || "").slice(0, 400));
 
+    // Restart the server and make sure ammo / firstSide / whoseTurn survive reload
+    try { child.kill("SIGTERM"); } catch (e) { /* ignore */ }
+    await sleep(400);
+    child = await startServer();
+    child.on("exit", function () { /* ignore later */ });
+    const re = await request("GET", "/api/matches/m_ammo/state?compact=1");
+    if (re.status === 200 && re.data.firstSide && re.data.players.left.ammo &&
+        re.data.players[re.data.firstSide].ammo.triple === 0 && re.data.players[re.data.firstSide].ammo.blast === 0) {
+      pass("ammo and firstSide survive server restart", "firstSide=" + re.data.firstSide + " turnNumber=" + re.data.turnNumber);
+    } else fail("ammo and firstSide survive server restart", JSON.stringify(re.data).slice(0, 300));
   } catch (err) {
     fail("unhandled", err.stack || err.message);
   }

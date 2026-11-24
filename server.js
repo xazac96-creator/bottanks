@@ -28,6 +28,12 @@ const SERVER_JSON =
 const HTML_FILE = path.join(ROOT, "bottanks.html");
 
 const ALLOWED_BOTS = Object.freeze(["random", "naive", "bracketer", "solver"]);
+// Dev/test-only override for who fires first ("left" | "right"). Leave unset in
+// production so the opener is chosen with crypto randomness.
+const FORCE_FIRST_SIDE =
+  process.env.BOTTANKS_FIRST_SIDE === "left" || process.env.BOTTANKS_FIRST_SIDE === "right"
+    ? process.env.BOTTANKS_FIRST_SIDE
+    : null;
 
 fs.mkdirSync(MATCH_DIR, { recursive: true });
 
@@ -108,20 +114,41 @@ function publicPlayer(p) {
   };
 }
 
+function whoseTurnOf(match) {
+  const w = match.world;
+  if (match.status !== "active" || w.over) return null;
+  return w.side;
+}
+
+function ammoOf(world, side) {
+  return engine.copyAmmo(world[side] && world[side].ammo);
+}
+
+function ammoCaps() {
+  return engine.copyAmmo(engine.AMMO_CAPS);
+}
+
+function pickFirstSide() {
+  if (FORCE_FIRST_SIDE) return FORCE_FIRST_SIDE;
+  return crypto.randomInt(2) === 0 ? "left" : "right";
+}
+
 function summarize(match) {
   const w = match.world;
   return {
     matchId: match.matchId,
     status: match.status,
     seed: match.seed,
+    firstSide: match.firstSide || null,
     players: {
       left: publicPlayer(match.players.left),
       right: publicPlayer(match.players.right),
     },
     turnCount: match.turns.length,
     turnNumber: w.turn,
-    whoseTurn: match.status === "finished" || w.over ? null : w.side,
+    whoseTurn: whoseTurnOf(match),
     hp: { left: w.left.hp, right: w.right.hp },
+    ammo: { left: ammoOf(w, "left"), right: ammoOf(w, "right") },
     winner: w.winner,
     createdAt: match.createdAt,
     updatedAt: match.updatedAt,
@@ -139,6 +166,8 @@ function compactTurn(turn, includePaths) {
     power: turn.power,
     weapon: turn.weapon,
     taunt: turn.taunt || null,
+    error: turn.error || null,
+    ammoAfter: turn.ammoAfter || null,
     windBefore: turn.windBefore,
     windAfter: turn.windAfter,
     impacts: turn.impacts,
@@ -168,7 +197,9 @@ function publicState(match, opts) {
     status: match.status,
     seed: match.seed,
     turnNumber: w.turn,
-    whoseTurn: match.status === "finished" || w.over ? null : w.side,
+    whoseTurn: whoseTurnOf(match),
+    firstSide: match.firstSide || null,
+    ammoCaps: ammoCaps(),
     players: {
       left: match.players.left
         ? {
@@ -178,6 +209,8 @@ function publicState(match, opts) {
             y: w.left.y,
             hp: w.left.hp,
             maxHp: w.left.maxHp,
+            ammo: ammoOf(w, "left"),
+            availableWeapons: engine.availableWeapons(w.left.ammo),
           }
         : null,
       right: match.players.right
@@ -188,6 +221,8 @@ function publicState(match, opts) {
             y: w.right.y,
             hp: w.right.hp,
             maxHp: w.right.maxHp,
+            ammo: ammoOf(w, "right"),
+            availableWeapons: engine.availableWeapons(w.right.ammo),
           }
         : null,
     },
@@ -221,14 +256,18 @@ function persist(match) {
       right: publicPlayer(match.players.right),
     },
     winner: w.winner,
+    firstSide: match.firstSide || null,
+    startedAt: match.startedAt || null,
+    ammoCaps: ammoCaps(),
     initial: match.initial,
     turns: match.turns,
     final: {
       terrain: w.terrain.slice(),
-      left: { x: w.left.x, y: w.left.y, hp: w.left.hp },
-      right: { x: w.right.x, y: w.right.y, hp: w.right.hp },
+      left: { x: w.left.x, y: w.left.y, hp: w.left.hp, ammo: ammoOf(w, "left") },
+      right: { x: w.right.x, y: w.right.y, hp: w.right.hp, ammo: ammoOf(w, "right") },
       wind: w.wind,
       turnNumber: w.turn,
+      side: w.side,
       stats: w.stats,
     },
   };
@@ -279,7 +318,11 @@ function joinInstructions(match, side, token) {
       side +
       " in " +
       match.matchId +
-      ". Keep your token secret. When status is active and it is your turn, POST a shot. Use wait=1 to block until your turn.",
+      ". Keep your token secret. Who fires first is picked at random when the match becomes active (see firstSide / whoseTurn). When status is active and it is your turn, POST a shot. Use wait=1 to block until your turn. Ammo per match: triple x" +
+      engine.AMMO_CAPS.triple +
+      ", blast x" +
+      engine.AMMO_CAPS.blast +
+      ", shell and roller unlimited; firing an empty weapon returns 400.",
     cli:
       "node agent-cli.js wait " +
       match.matchId +
@@ -337,6 +380,8 @@ function createMatch(opts) {
     players: { left: null, right: null },
     world: world,
     initial: captureInitial(world),
+    firstSide: null,
+    startedAt: null,
     turns: [],
     lastTurn: null,
     waiters: [],
@@ -373,6 +418,13 @@ function seatPlayer(match, side, info) {
   match.updatedAt = nowIso();
   if (match.players.left && match.players.right) {
     match.status = match.world.over ? "finished" : "active";
+    if (match.status === "active" && !match.firstSide && !match.world.history.length && !match.turns.length) {
+      // Coin flip with crypto randomness (not the terrain seed) so seat order
+      // can't be gamed: either seat may fire first.
+      match.firstSide = engine.setFirstSide(match.world, pickFirstSide());
+      match.startedAt = nowIso();
+      match.initial.firstSide = match.firstSide;
+    }
   } else {
     match.status = "waiting";
   }
@@ -410,6 +462,8 @@ function packLiveTurn(match, record, agentName, taunt) {
     skipped: record.skipped,
     error: record.error,
     timeout: record.timeout,
+    ammoAfter: record.ammoAfter,
+    firstSide: match.firstSide || null,
     winnerAfter: record.winnerAfter,
   };
 }
@@ -487,11 +541,19 @@ function helpJson() {
     name: "Bot Tanks Live Arena",
     url: base,
     cap: "Two live agents per match. A third join to the same match returns 409.",
+    firstSide: "When the second seat fills, the server flips a crypto-random coin to pick who fires first (state.firstSide). Check whoseTurn — the right seat may open.",
+    ammo: {
+      caps: ammoCaps(),
+      rule:
+        "Per tank, per match: triple x" + engine.AMMO_CAPS.triple + ", blast x" + engine.AMMO_CAPS.blast +
+        ", shell and roller unlimited (null = unlimited). Remaining counts are in state.players.<side>.ammo and availableWeapons. Firing an exhausted weapon returns 400 (nothing is swapped and your turn is not used).",
+    },
     quickstart: [
       "POST " + base + "/api/join  { \"name\": \"YourBot\" }",
       "Save matchId, side, and token from the response.",
-      "GET " + base + "/api/matches/<id>/state?wait=1&side=<side>&timeout=25  until it is your turn (and status=active).",
+      "GET " + base + "/api/matches/<id>/state?wait=1&side=<side>&timeout=25  until it is your turn (and status=active). The first shooter is random (firstSide).",
       "POST " + base + "/api/matches/<id>/fire  { \"token\", \"angle\": 0-180, \"power\": 0-100, \"weapon\": \"shell|blast|triple|roller\", \"taunt\": \"optional\" }",
+      "Ammo: triple x" + engine.AMMO_CAPS.triple + ", blast x" + engine.AMMO_CAPS.blast + " per match; shell/roller unlimited. Check players.<side>.ammo before firing — an empty weapon returns 400.",
       "Repeat wait + fire until winner is set. GET .../log for the full ledger.",
     ],
     cli: "node /workspace/bottanks/agent-cli.js join MyName",
@@ -526,6 +588,10 @@ function helpText() {
     h.guide +
     "\nAngle: " +
     h.angle +
+    "\nAmmo: " +
+    h.ammo.rule +
+    "\nFirst shot: " +
+    h.firstSide +
     "\n"
   );
 }
@@ -643,6 +709,24 @@ async function handleFire(req, res, match) {
     send(res, 400, { error: "Need numeric angle (0-180) and power (0-100)" });
     return;
   }
+  const ammo = match.world[side].ammo;
+  if (!engine.hasAmmo(ammo, cmd.weapon)) {
+    const cap = engine.AMMO_CAPS[cmd.weapon];
+    const avail = engine.availableWeapons(ammo);
+    send(res, 400, {
+      error:
+        "Out of ammo: " + engine.WEAPONS[cmd.weapon].name + " (" + cmd.weapon + ") has 0 of " + cap +
+        " left for " + side + " this match. Pick another weapon: " + avail.join(", ") + ". Your turn was not used.",
+      code: "out_of_ammo",
+      weapon: cmd.weapon,
+      side: side,
+      ammo: ammoOf(match.world, side),
+      availableWeapons: avail,
+      whoseTurn: match.world.side,
+      turnNumber: match.world.turn,
+    });
+    return;
+  }
   const taunt = body.taunt == null ? null : String(body.taunt).slice(0, 80);
   const turn = applyFire(match, side, cmd, taunt, { path: true });
   drainBots(match);
@@ -740,6 +824,10 @@ function handleLog(res, match) {
       right: publicPlayer(match.players.right),
     },
     winner: match.world.winner,
+    firstSide: match.firstSide || null,
+    startedAt: match.startedAt || null,
+    ammoCaps: ammoCaps(),
+    ammo: { left: ammoOf(match.world, "left"), right: ammoOf(match.world, "right") },
     turnCount: match.turns.length,
     turns: match.turns,
     initial: match.initial,
@@ -810,7 +898,12 @@ function openapiSpec(req) {
     "Launch angle in degrees. 0° is due right, 90° is straight up, 180° is due left. Left tank typically aims 5°–85°; right tank typically aims 95°–175°.";
   const powerDesc =
     "Shot power from 10 to 100 (100 is maximum muzzle speed). Values are clamped to the legal range.";
-  const weaponDesc = "Weapon id: shell (standard), blast (big crater and damage), triple (three projectiles), or roller (trench).";
+  const weaponDesc =
+    "Weapon id: shell (standard, unlimited), blast (big crater and damage, " + engine.AMMO_CAPS.blast +
+    " per match), triple (three projectiles, " + engine.AMMO_CAPS.triple +
+    " per match), or roller (trench, unlimited). Ammo is per tank per match; check players.<side>.ammo / availableWeapons in getMatchState. Firing an exhausted weapon returns 400 and does not use your turn.";
+  const firstDesc =
+    "Who fires first is chosen at random (crypto coin flip) when the second seat fills; see firstSide and whoseTurn. Either seat may open.";
   const idParam = {
     name: "id",
     in: "path",
@@ -831,7 +924,7 @@ function openapiSpec(req) {
       title: "Bot Tanks Live Arena",
       version: "1.0.0",
       description:
-        "Turn-based artillery duel for two live agents. Import this document as a ChatGPT Custom GPT Action. Angle: 0° right, 90° up, 180° left. Power: 10–100. Weapons: shell, blast, triple, roller. Join, wait until it is your turn, then fire.",
+        "Turn-based artillery duel for two live agents. Import this document as a ChatGPT Custom GPT Action. Angle: 0° right, 90° up, 180° left. Power: 10–100. Weapons: shell, blast, triple, roller. Ammo caps per tank per match: triple x" + engine.AMMO_CAPS.triple + ", blast x" + engine.AMMO_CAPS.blast + ", shell and roller unlimited. The first shooter is random (firstSide). Join, wait until it is your turn, then fire.",
     },
     servers: [{ url: publicBaseUrl(req), description: "This arena server" }],
     paths: {
@@ -862,7 +955,7 @@ function openapiSpec(req) {
           operationId: "joinMatch",
           summary: "Join a match",
           description:
-            "Sit in a seat. Omit matchId to join the oldest waiting match, or to open a new lobby. The first agent is left; the second is right and the match becomes active. A third join to a full match returns 409. Save matchId, side, and token from the response — the token is required to fire.",
+            "Sit in a seat. Omit matchId to join the oldest waiting match, or to open a new lobby. The first agent is left; the second is right and the match becomes active. " + firstDesc + " A third join to a full match returns 409. Save matchId, side, and token from the response — the token is required to fire.",
           requestBody: {
             required: true,
             content: {
@@ -892,7 +985,7 @@ function openapiSpec(req) {
           operationId: "getMatchState",
           summary: "Get match state",
           description:
-            "Current wind, gravity, both tanks' exact (x, y) and HP, whose turn it is, and the last shot. Add wait=1&side=left|right to long-poll until it is that side's turn or the match ends (timeout defaults to 25 seconds). Add compact=1 to omit full terrain.",
+            "Current wind, gravity, both tanks' exact (x, y), HP and remaining ammo (players.<side>.ammo: counts per weapon, null = unlimited; players.<side>.availableWeapons), firstSide, whose turn it is, and the last shot. " + firstDesc + " Add wait=1&side=left|right to long-poll until it is that side's turn or the match ends (timeout defaults to 25 seconds). Add compact=1 to omit full terrain.",
           parameters: [
             idParam,
             { name: "compact", in: "query", schema: { type: "string" }, description: "Set to 1 to omit the full terrain array." },
@@ -901,7 +994,27 @@ function openapiSpec(req) {
             { name: "timeout", in: "query", schema: { type: "integer" }, description: "Long-poll timeout in seconds (default 25)." },
           ],
           responses: {
-            "200": { description: "Public match state, including wind, gravity, tank positions, HP, and lastTurn." },
+            "200": {
+              description: "Public match state, including wind, gravity, tank positions, HP, ammo, firstSide, whoseTurn, and lastTurn.",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      matchId: { type: "string" },
+                      status: { type: "string", enum: ["waiting", "active", "finished"] },
+                      whoseTurn: { type: ["string", "null"], enum: ["left", "right", null], description: "Side that must fire now (null while waiting or after the match ends)." },
+                      firstSide: { type: ["string", "null"], enum: ["left", "right", null], description: firstDesc },
+                      ammoCaps: { type: "object", description: "Starting ammo per weapon per tank (null = unlimited).", additionalProperties: { type: ["integer", "null"] } },
+                      players: {
+                        type: "object",
+                        description: "players.left / players.right: name, x, y, hp, maxHp, ammo (remaining per weapon, null = unlimited), availableWeapons.",
+                      },
+                    },
+                  },
+                },
+              },
+            },
             "404": { description: "Match not found", content: { "application/json": { schema: errSchema } } },
           },
         },
@@ -933,6 +1046,8 @@ function openapiSpec(req) {
           },
           responses: {
             "200": { description: "Turn receipt plus the updated public state." },
+            "400": { description: "Bad angle/power, or the chosen weapon is out of ammo (code: out_of_ammo, with ammo and availableWeapons). Nothing is fired and your turn is not used.", content: { "application/json": { schema: errSchema } } },
+            "403": { description: "Invalid token for this match.", content: { "application/json": { schema: errSchema } } },
             "409": { description: "Not your turn, match not active, or invalid token.", content: { "application/json": { schema: errSchema } } },
             "404": { description: "Match not found", content: { "application/json": { schema: errSchema } } },
           },
@@ -1005,6 +1120,26 @@ function worldFromSaved(data) {
   if (init.gravity != null) world.gravity = init.gravity;
   if (fin.turnNumber != null) world.turn = fin.turnNumber;
   if (fin.stats) world.stats = fin.stats;
+  const turns = Array.isArray(data.turns) ? data.turns : [];
+  const first = data.firstSide === "right" || data.firstSide === "left"
+    ? data.firstSide
+    : (turns.length ? turns[0].side : "left");
+  world.firstSide = first;
+  if (fin.side === "left" || fin.side === "right") world.side = fin.side;
+  else world.side = turns.length % 2 === 0 ? first : (first === "left" ? "right" : "left");
+  ["left", "right"].forEach(function (side) {
+    const saved = fin[side] && fin[side].ammo;
+    if (saved && typeof saved === "object") {
+      world[side].ammo = engine.copyAmmo(saved);
+    } else {
+      // Older saves: rebuild remaining ammo from the turn ledger.
+      const ammo = engine.initialAmmo();
+      turns.forEach(function (t) {
+        if (t.side === side && !t.skipped && ammo[t.weapon] != null && ammo[t.weapon] > 0) ammo[t.weapon] -= 1;
+      });
+      world[side].ammo = ammo;
+    }
+  });
   world.winner = data.winner || null;
   world.over = data.status === "finished" || !!world.winner;
   return world;
@@ -1029,6 +1164,8 @@ function hydrateMatch(data) {
         : null,
     },
     world: worldFromSaved(data),
+    firstSide: data.firstSide || (Array.isArray(data.turns) && data.turns.length ? data.turns[0].side : null),
+    startedAt: data.startedAt || null,
     initial: data.initial || captureInitial(engine.createWorld({ seed: (data.seed || 0) >>> 0 })),
     turns: Array.isArray(data.turns) ? data.turns : [],
     lastTurn: null,
